@@ -1,0 +1,14 @@
+.git
+.gitignore
+.dockerignore
+*.tar.gz
+*.md
+__pycache__
+*.pyc
+*.pyo
+.env
+db/
+followup-bot/Dockerfile
+followup-bot/.gitignore
+followup-bot/CLAUDE.md
+followup-bot/src/__pycache__
