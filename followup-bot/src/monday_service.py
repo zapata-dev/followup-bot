@@ -70,7 +70,10 @@ class MondayFollowupService:
 
                 if "errors" in data:
                     logger.error(f"❌ Monday GraphQL errors: {data['errors']}")
-                
+                    # If there's no usable data alongside the errors, return empty
+                    if "data" not in data or data["data"] is None:
+                        return {}
+
                 return data
 
             except Exception as e:
