@@ -50,15 +50,13 @@ class MemoryStore:
         await self._conn.commit()
 
     async def get(self, phone: str) -> Optional[Dict[str, Any]]:
-        self._conn.row_factory = aiosqlite.Row
         cursor = await self._conn.execute(
             "SELECT phone, state, context_json FROM sessions WHERE phone=?", (phone,)
         )
         row = await cursor.fetchone()
-        self._conn.row_factory = None
         if not row:
             return None
-        data = dict(row)
+        data = {"phone": row[0], "state": row[1], "context_json": row[2]}
         try:
             data["context"] = json.loads(data["context_json"] or "{}")
         except Exception:

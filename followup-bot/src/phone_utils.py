@@ -56,7 +56,7 @@ def normalize_phone(raw: str) -> str:
         pass
     else:
         logger.warning(f"⚠️ Teléfono no normalizable: {raw} → {digits}")
-        return digits  # Return as-is, let caller handle
+        return ""  # Invalid format, reject to avoid sending to wrong numbers
     
     return digits
 

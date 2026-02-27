@@ -142,6 +142,12 @@ async def lifespan(app: FastAPI):
     await state.memory.init()
     logger.info("✅ SQLite initialized")
     
+    # OpenAI check
+    if not os.getenv("OPENAI_API_KEY"):
+        logger.warning("⚠️ OPENAI_API_KEY not set — AI replies will fail")
+    else:
+        logger.info("✅ OpenAI API key configured")
+
     # Monday check
     if monday_followup.is_configured():
         logger.info("✅ Monday.com configured")
@@ -361,10 +367,13 @@ async def _send_reply(phone: str, text: str):
     await asyncio.sleep(delay)
 
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            r = await client.post(url, json=body, headers=headers)
-            if r.status_code >= 400:
-                logger.error(f"❌ Evolution send error: {r.status_code} {r.text[:200]}")
+        client = state.http_client
+        if not client:
+            logger.error("❌ HTTP client not initialized")
+            return
+        r = await client.post(url, json=body, headers=headers)
+        if r.status_code >= 400:
+            logger.error(f"❌ Evolution send error: {r.status_code} {r.text[:200]}")
     except Exception as e:
         logger.error(f"❌ Evolution send failed: {e}")
 

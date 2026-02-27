@@ -3,6 +3,7 @@ Sender Service — Motor de envío outbound con rate limiting.
 Lee contactos pendientes de Monday, envía por Evolution API, actualiza estatus.
 """
 import os
+import re
 import asyncio
 import random
 import logging
@@ -161,7 +162,6 @@ class SenderService:
         msg = msg.replace("{resumen}", contact.get("resumen", ""))
 
         # Clean up any unreplaced placeholders
-        import re
         msg = re.sub(r'\{mensaje\}', '', msg)
         msg = re.sub(r'\s+', ' ', msg).strip()
 

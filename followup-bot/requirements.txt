@@ -11,13 +11,10 @@ aiosqlite==0.20.0
 # OpenAI SDK (v1.x)
 openai==1.59.7
 
-# Data
-pandas==2.2.3
+# Timezone
 pytz==2024.2
 
 # Config
 pydantic==2.9.2
 pydantic-settings==2.6.1
 
-# Scheduler for outbound sender
-apscheduler==3.10.4
