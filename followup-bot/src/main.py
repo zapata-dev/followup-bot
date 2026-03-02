@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     # Message accumulation
     MESSAGE_ACCUMULATION_SECONDS: float = 4.0
 
+    # Reply to contacts not found in Monday (useful for testing)
+    REPLY_TO_UNKNOWN_CONTACTS: bool = True
+
     class Config:
         env_file = ".env"
         extra = "ignore"
@@ -277,10 +280,24 @@ async def _process_webhook(body: dict):
 
     # Look up contact in Monday
     contact = await monday_followup.find_by_phone(phone)
-    
+    unknown_contact = False
+
     if not contact:
-        logger.info(f"🔍 Phone {phone[:6]}*** not found in Monday board, ignoring")
-        return
+        if not settings.REPLY_TO_UNKNOWN_CONTACTS:
+            logger.info(f"🔍 Phone {phone[:6]}*** not found in Monday board, ignoring")
+            return
+        # Reply to unknown contacts (useful for testing)
+        logger.info(f"🔍 Phone {phone[:6]}*** not found in Monday board, replying anyway (REPLY_TO_UNKNOWN_CONTACTS=true)")
+        contact = {
+            "item_id": None,
+            "name": "",
+            "vehicle": "",
+            "notes": "",
+            "resumen": "",
+            "last_contact": "",
+            "group_title": "",
+        }
+        unknown_contact = True
 
     # Load conversation history from SQLite
     session = await state.memory.get(phone)
@@ -316,13 +333,18 @@ async def _process_webhook(body: dict):
     # Update conversation history
     history.append({"role": "user", "content": text})
     history.append({"role": "assistant", "content": reply_text})
-    
+
     # Truncate history to last 10 exchanges
     if len(history) > 20:
         history = history[-20:]
 
     # Save to SQLite
     await state.memory.upsert(phone, action, {"history": history})
+
+    # Skip Monday updates if contact was not found in Monday
+    if unknown_contact:
+        logger.info(f"📝 Unknown contact reply sent: action={action}")
+        return
 
     # Update Monday based on action
     if action == "stop":
