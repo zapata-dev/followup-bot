@@ -9,7 +9,7 @@ COPY followup-bot/src/ src/
 
 RUN mkdir -p /app/followup-bot/db
 
-ENV PORT=10000
-EXPOSE ${PORT}
+ENV PORT=8080
+EXPOSE 8080
 
 CMD uvicorn src.main:app --host 0.0.0.0 --port ${PORT}
