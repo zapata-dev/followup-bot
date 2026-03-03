@@ -108,42 +108,22 @@ class SenderService:
         self.company_url = os.getenv("COMPANY_URL", "")
 
         # Campaign-specific templates (derived from Monday group name keywords)
+        # IMPORTANT: Keep templates SHORT (1-3 lines max). WhatsApp = chat, not email.
+        # Each template ends with ONE clear question to invite response.
         self.campaign_templates = {
             "lost_lead": os.getenv("TEMPLATE_LOST_LEAD", (
-                "Hola {nombre}, como te encuentras?\n\n"
-                "Notamos que no recibimos respuesta respecto a la promocion de "
-                "tractocamiones que compartimos en nuestras plataformas de Instagram y "
-                "Facebook. Agradecemos mucho que te hayas dado el tiempo de visitarnos.\n\n"
-                "Si deseas conocer nuestro inventario disponible, te invitamos a "
-                "consultar nuestra plataforma y pagina web:\n"
-                "{company_url}\n"
-                "donde podras ver todas las opciones disponibles.\n\n"
-                "Y si ya se concreto tu operacion con el grupo, nos daria mucho gusto "
-                "que nos lo hagas saber, ya que tenemos algo especial para ti.\n\n"
-                "Quedo al pendiente!"
+                "Hola {nombre}, te escribo de {company_name}. "
+                "Hace un tiempo preguntaste por el {vehiculo} y queria saber "
+                "si sigues evaluando esa opcion o si ya resolviste tu compra."
             )),
             "assigned_lead": os.getenv("TEMPLATE_ASSIGNED_LEAD", (
-                "Hola {nombre}, como te ha ido?\n\n"
-                "Agradecemos mucho que nos hayas contactado a traves de nuestras "
-                "plataformas de Facebook o Instagram. Vemos que ya tienes asignado a uno "
-                "de nuestros vendedores y queremos asegurarnos de que la atencion este "
-                "siendo la adecuada.\n\n"
-                "Nos gustaria saber como ha sido tu experiencia hasta ahora y si el "
-                "vendedor te ha brindado la informacion y el seguimiento correctos, o si "
-                "hay algo adicional en lo que podamos apoyarte directamente.\n\n"
-                "Quedamos atentos a tus comentarios y esperamos poder atenderte como te "
-                "mereces."
+                "Hola {nombre}, te escribo de {company_name}. "
+                "Queria asegurarme de que te hayan atendido bien. "
+                "Te pudieron resolver tu consulta sobre el {vehiculo}?"
             )),
             "attended_appointment": os.getenv("TEMPLATE_ATTENDED_APPOINTMENT", (
-                "Hola {nombre}, agradecemos su asistencia a la cita programada para conocer el vehiculo. "
-                "Esperamos que haya sido de su agrado o, en su caso, que haya encontrado "
-                "alguna otra opcion que cubra sus expectativas.\n\n"
-                "Le avisamos que, al momento de cerrar su operacion, tenemos un regalo "
-                "especial para usted. No olvide contactarnos cuando la concrete para "
-                "poder entregarselo.\n\n"
-                "Asimismo, nos gustaria conocer su experiencia. En una escala del 1 al 5, "
-                "donde 5 es excelente, que calificacion nos daria por la atencion "
-                "recibida?"
+                "Hola {nombre}, te escribo de {company_name}. "
+                "Que tal te parecio el {vehiculo} cuando viniste a verlo?"
             )),
         }
 

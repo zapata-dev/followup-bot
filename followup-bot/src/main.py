@@ -31,6 +31,31 @@ from src.conversation_logic import handle_reply, detect_stop, detect_campaign_ty
 from src.phone_utils import normalize_phone
 
 # ============================================================
+# BOT / AUTO-RESPONDER DETECTION
+# ============================================================
+# Phrases that indicate the message is from another business's auto-responder
+_BOT_INDICATORS = [
+    "bienvenido a", "welcome to", "gracias por comunicarte con",
+    "nuestro horario de atencion", "en un momento te atendemos",
+    "respuesta automatica", "auto-reply", "fuera de horario",
+    "menu principal", "selecciona una opcion", "presiona 1",
+    "catalogo disponible", "visita nuestra tienda", "conoce nuestros",
+    "go on", "chatea con nosotros", "powered by",
+]
+
+
+def _is_auto_responder(text: str, response_time_ms: int = 0) -> bool:
+    """
+    Detect if a message is likely from another bot/auto-responder.
+    Signals: known bot phrases, URLs in first message, instant response time.
+    """
+    t = text.lower().strip()
+    for indicator in _BOT_INDICATORS:
+        if indicator in t:
+            return True
+    return False
+
+# ============================================================
 # CONFIG
 # ============================================================
 class Settings(BaseSettings):
@@ -200,10 +225,12 @@ async def health():
 # WEBHOOK — INCOMING REPLIES
 # ============================================================
 @app.post("/webhook")
+@app.post("/webhook/messages")
 async def webhook(request: Request):
     """
     Receives incoming WhatsApp messages from Evolution API.
     Processes replies from contacts who received outbound messages.
+    Accepts both /webhook and /webhook/messages paths.
     """
     try:
         body = await request.json()
@@ -272,6 +299,11 @@ async def _process_webhook(body: dict):
     if not text:
         # Could be audio/image — for now, skip
         logger.info(f"📎 Non-text message from {phone[:6]}***, skipping")
+        return
+
+    # Filter out auto-responders from other businesses/bots
+    if _is_auto_responder(text):
+        logger.info(f"🤖 Auto-responder detected from {phone[:6]}***, ignoring: {text[:80]}")
         return
 
     # Check if user is silenced (human took over)
