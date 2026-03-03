@@ -91,53 +91,24 @@ class MondayFollowupService:
     async def get_pending_contacts(self, group_id: str, limit: int = 50) -> List[Dict]:
         """
         Get contacts with status 'Pendiente' from a specific group.
-        Returns list of dicts with: item_id, name, phone, vehicle, notes, resumen, template.
+        Fetches all items from the group and filters by status in Python
+        (more reliable than GraphQL status filtering).
         """
-        query = """
-        query ($board_id: [ID!]!) {
-            boards(ids: $board_id) {
-                groups {
-                    id
-                    title
-                }
-                items_page(limit: 500, query_params: {
-                    rules: [{
-                        column_id: "STATUS_COL",
-                        compare_value: ["Pendiente"]
-                    }]
-                }) {
-                    items {
-                        id
-                        name
-                        group { id title }
-                        column_values {
-                            id
-                            text
-                            value
-                        }
-                    }
-                }
-            }
-        }
-        """.replace("STATUS_COL", self.status_col_id)
-
-        data = await self._graphql(query, {"board_id": [int(self.board_id)]})
-        
-        items = (data.get("data", {}).get("boards", [{}])[0]
-                 .get("items_page", {}).get("items", []))
+        items = await self._get_group_items(group_id)
 
         contacts = []
         for item in items:
-            # Filter by group
-            if item.get("group", {}).get("id") != group_id:
-                continue
-            
             col_map = {cv["id"]: cv.get("text", "") for cv in item.get("column_values", [])}
-            
+
+            # Filter by status = "Pendiente" (case-insensitive)
+            status = col_map.get(self.status_col_id, "").strip()
+            if status.lower() != "pendiente":
+                continue
+
             contacts.append({
                 "item_id": item["id"],
                 "name": item.get("name", ""),
-                "phone": col_map.get(self.dedupe_col_id, ""),
+                "phone": col_map.get(self.dedupe_col_id, "") or col_map.get(self.phone_col_id, ""),
                 "vehicle": col_map.get(self.vehicle_col_id, ""),
                 "notes": col_map.get(self.notes_col_id, ""),
                 "resumen": col_map.get(self.resumen_col_id, ""),
@@ -151,6 +122,40 @@ class MondayFollowupService:
 
         logger.info(f"📋 Found {len(contacts)} pending contacts in group {group_id}")
         return contacts
+
+    async def _get_group_items(self, group_id: str) -> List[Dict]:
+        """Fetch all items from a specific group (no status filter)."""
+        query = """
+        query ($board_id: [ID!]!, $group_id: [String!]!) {
+            boards(ids: $board_id) {
+                groups(ids: $group_id) {
+                    id
+                    title
+                    items_page(limit: 500) {
+                        items {
+                            id
+                            name
+                            group { id title }
+                            column_values {
+                                id
+                                text
+                                value
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        """
+        data = await self._graphql(query, {
+            "board_id": [int(self.board_id)],
+            "group_id": [group_id],
+        })
+
+        groups = data.get("data", {}).get("boards", [{}])[0].get("groups", [])
+        if not groups:
+            return []
+        return groups[0].get("items_page", {}).get("items", [])
 
     # ──────────────────────────────────────────────────────────
     # READ: Get all groups (campaigns)
