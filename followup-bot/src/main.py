@@ -26,7 +26,7 @@ from pydantic_settings import BaseSettings
 
 from src.memory_store import MemoryStore
 from src.monday_service import monday_followup
-from src.sender_service import sender
+from src.sender_service import sender, is_office_hours, get_mexico_now
 from src.conversation_logic import handle_reply, detect_stop, detect_campaign_type
 from src.phone_utils import normalize_phone
 
@@ -63,6 +63,11 @@ class Settings(BaseSettings):
 
     # Reply to contacts not found in Monday (useful for testing)
     REPLY_TO_UNKNOWN_CONTACTS: bool = True
+
+    # Off-hours schedule messages (set to empty "" to disable)
+    OFF_HOURS_MSG_SUNDAY: str = "Nuestro horario de atencion es de lunes a viernes de 9am a 6pm y sabados de 9am a 2pm."
+    OFF_HOURS_MSG_SATURDAY: str = "Nuestro horario sabatino es de 9am a 2pm. Te atendemos el lunes a primera hora."
+    OFF_HOURS_MSG_WEEKNIGHT: str = "Nuestro horario de atencion es de 9am a 6pm. Te atendemos a primera hora."
 
     class Config:
         env_file = ".env"
@@ -276,7 +281,12 @@ async def _process_webhook(body: dict):
         else:
             del state.silenced_users[phone]
 
-    logger.info(f"📩 Reply from {phone[:6]}***: {text[:80]}")
+    # Determine if we're outside office hours (slower response)
+    _off_hours = not is_office_hours()
+    if _off_hours:
+        logger.info(f"🌙 Off-hours reply from {phone[:6]}***: {text[:80]}")
+    else:
+        logger.info(f"📩 Reply from {phone[:6]}***: {text[:80]}")
 
     # Look up contact in Monday
     contact = await monday_followup.find_by_phone(phone)
@@ -327,8 +337,22 @@ async def _process_webhook(body: dict):
     action = result["action"]
     summary = result["summary"]
 
-    # Send reply via Evolution
-    await _send_reply(phone, reply_text)
+    # Off-hours: add schedule notice to reply (except STOP responses)
+    # Configurable via env vars: OFF_HOURS_MSG_SUNDAY, OFF_HOURS_MSG_SATURDAY, OFF_HOURS_MSG_WEEKNIGHT
+    # Set any to "" (empty) in Render to disable that specific message
+    if _off_hours and action != "stop":
+        now_mx = get_mexico_now()
+        if now_mx.weekday() == 6:  # Sunday
+            schedule_note = settings.OFF_HOURS_MSG_SUNDAY
+        elif now_mx.weekday() == 5:  # Saturday after 2pm
+            schedule_note = settings.OFF_HOURS_MSG_SATURDAY
+        else:  # Weekday after 6pm
+            schedule_note = settings.OFF_HOURS_MSG_WEEKNIGHT
+        if schedule_note:
+            reply_text = f"{reply_text}\n\n{schedule_note}"
+
+    # Send reply via Evolution (slower if off-hours)
+    await _send_reply(phone, reply_text, slow=_off_hours)
 
     # Update conversation history
     history.append({"role": "user", "content": text})
@@ -373,7 +397,7 @@ async def _process_webhook(body: dict):
         await monday_followup.update_reply(contact["item_id"], "Respondió", summary)
 
 
-async def _send_reply(phone: str, text: str):
+async def _send_reply(phone: str, text: str, slow: bool = False):
     """Send a WhatsApp message via Evolution API."""
     normalized = normalize_phone(phone)
     if not normalized:
@@ -385,7 +409,12 @@ async def _send_reply(phone: str, text: str):
     body = {"number": jid, "text": text}
 
     # Typing delay (simulate human)
-    delay = random.uniform(3, 7)
+    # Off-hours: respond slower (15-30s) to look more natural
+    if slow:
+        delay = random.uniform(15, 30)
+        logger.info(f"🌙 Off-hours reply, waiting {delay:.0f}s")
+    else:
+        delay = random.uniform(3, 7)
     await asyncio.sleep(delay)
 
     try:
@@ -414,15 +443,15 @@ async def list_groups():
 
 
 @app.post("/admin/start/{group_id}")
-async def start_campaign(group_id: str):
+async def start_campaign(group_id: str, force: bool = False):
     """
     Start sending messages to pending contacts in a Monday group.
-    Runs in background with rate limiting.
+    Use ?force=true to bypass the send window check (for testing).
     """
     if not monday_followup.is_configured():
         return {"error": "Monday.com not configured"}
 
-    result = await sender.start_campaign(group_id, memory_store=state.memory)
+    result = await sender.start_campaign(group_id, memory_store=state.memory, force=force)
     return result
 
 
