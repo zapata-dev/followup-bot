@@ -446,3 +446,23 @@ async def debug_columns():
         return {"error": "Monday.com not configured"}
     structure = await monday_followup.get_board_structure()
     return structure
+
+
+@app.get("/admin/debug/items/{group_id}")
+async def debug_items(group_id: str):
+    """Show all items in a group with their raw column values."""
+    if not monday_followup.is_configured():
+        return {"error": "Monday.com not configured"}
+    items = await monday_followup._get_group_items(group_id)
+    result = []
+    for item in items:
+        col_map = {cv["id"]: cv.get("text", "") for cv in item.get("column_values", [])}
+        result.append({
+            "item_id": item["id"],
+            "name": item.get("name", ""),
+            "status": col_map.get(monday_followup.status_col_id, ""),
+            "phone_dedupe": col_map.get(monday_followup.dedupe_col_id, ""),
+            "phone_display": col_map.get(monday_followup.phone_col_id, ""),
+            "vehicle": col_map.get(monday_followup.vehicle_col_id, ""),
+        })
+    return {"group_id": group_id, "total_items": len(result), "items": result}
