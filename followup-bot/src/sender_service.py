@@ -6,8 +6,7 @@ Estrategia anti-baneo para volumen alto (300-1000+ contactos):
 - Envía en lotes (batches) con descanso entre lotes
 - Delay aleatorio variable entre mensajes (no uniforme)
 - Límite por hora y por día
-- Ventana horaria configurable
-- Si llega al límite diario, se detiene y puede retomar al día siguiente
+- Horario diferenciado: L-V 9-18, Sáb 9-14, Dom no envía
 """
 import os
 import re
@@ -25,17 +24,61 @@ from src.monday_service import monday_followup
 
 logger = logging.getLogger(__name__)
 
+# Day of week constants (datetime.weekday())
+MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY = range(7)
+
+
+def get_mexico_now() -> datetime:
+    """Get current time in Mexico City timezone."""
+    try:
+        tz = pytz.timezone("America/Mexico_City")
+        return datetime.now(tz)
+    except Exception:
+        return datetime.now()
+
+
+def is_office_hours(now: datetime = None) -> bool:
+    """
+    Check if current time is within office hours.
+    L-V: 9:00-18:00, Sáb: 9:00-14:00, Dom: closed.
+    """
+    if now is None:
+        now = get_mexico_now()
+    day = now.weekday()
+    current_time = now.strftime("%H:%M")
+
+    if day == SUNDAY:
+        return False
+    if day == SATURDAY:
+        return "09:00" <= current_time <= "14:00"
+    # Monday - Friday
+    return "09:00" <= current_time <= "18:00"
+
+
+def get_today_schedule(now: datetime = None) -> Optional[tuple]:
+    """
+    Returns (start, end) for today's send window, or None if no sends today.
+    """
+    if now is None:
+        now = get_mexico_now()
+    day = now.weekday()
+
+    if day == SUNDAY:
+        return None
+    if day == SATURDAY:
+        return ("09:00", "14:00")
+    return ("09:00", "18:00")
+
 
 class SenderService:
     """
     Motor de envío outbound con protecciones anti-baneo.
 
-    Estrategia para 1000 contactos:
-    - Lotes de 15-20 mensajes, luego pausa de 3-5 min
-    - Delay entre mensajes: 15-45s (aleatorio, no uniforme)
+    Estrategia para campañas grandes:
+    - Lotes de 15 mensajes, luego pausa de 3-5 min
+    - Delay entre mensajes: 15-45s (aleatorio)
     - Máximo 40/hora, 200/día
-    - Ventana: 9am-6pm México
-    - Un día: ~200 contactos. 1000 contactos = ~5 días hábiles.
+    - L-V: 9am-6pm, Sáb: 9am-2pm, Dom: no envía
     """
 
     def __init__(self):
@@ -49,8 +92,6 @@ class SenderService:
         self.delay_max = int(os.getenv("SEND_DELAY_MAX", "45"))
         self.max_per_hour = int(os.getenv("MAX_SENDS_PER_HOUR", "40"))
         self.max_per_day = int(os.getenv("MAX_SENDS_PER_DAY", "200"))
-        self.send_window_start = os.getenv("SEND_WINDOW_START", "09:00")
-        self.send_window_end = os.getenv("SEND_WINDOW_END", "18:00")
 
         # Batch settings — send N messages, then rest
         self.batch_size = int(os.getenv("BATCH_SIZE", "15"))
@@ -115,24 +156,11 @@ class SenderService:
         self._paused_campaigns: set = set()
 
     # ──────────────────────────────────────────────────────────
-    # TIME CHECKS
+    # RATE LIMIT CHECKS
     # ──────────────────────────────────────────────────────────
-    def _get_mexico_now(self) -> datetime:
-        try:
-            tz = pytz.timezone("America/Mexico_City")
-            return datetime.now(tz)
-        except Exception:
-            return datetime.now()
-
-    def _is_within_send_window(self) -> bool:
-        """Check if current time is within the allowed send window."""
-        now = self._get_mexico_now()
-        current_time = now.strftime("%H:%M")
-        return self.send_window_start <= current_time <= self.send_window_end
-
     def _check_hourly_limit(self) -> bool:
         """Check if we're within the hourly send limit."""
-        now = self._get_mexico_now()
+        now = get_mexico_now()
         current_hour = now.strftime("%Y-%m-%d-%H")
 
         if self._hour_reset_at != current_hour:
@@ -143,7 +171,7 @@ class SenderService:
 
     def _check_daily_limit(self) -> bool:
         """Check if we're within the daily send limit."""
-        now = self._get_mexico_now()
+        now = get_mexico_now()
         current_day = now.strftime("%Y-%m-%d")
 
         if self._day_reset_at != current_day:
@@ -159,26 +187,18 @@ class SenderService:
         """
         Build personalized message from template + contact data.
         Priority: contact-level template (Monday) > campaign template > default template.
-
-        Campaign type is auto-detected from the Monday group title.
         """
-        # 1. Per-contact template override (if set in Monday column)
         per_contact_template = contact.get("template", "").strip()
 
         if per_contact_template:
             template = per_contact_template
         else:
-            # 2. Detect campaign type from group title
             from src.conversation_logic import detect_campaign_type
             campaign_type = detect_campaign_type(contact.get("group_title", ""))
-
-            # 3. Use campaign-specific template or default
             template = self.campaign_templates.get(campaign_type, self.default_template)
 
-        # Extract name (clean Monday item name: "David Rojas | 5213131073749" → "David Rojas")
         raw_name = contact.get("name", "").split("|")[0].strip() or "cliente"
 
-        # Build message
         msg = template.replace("{nombre}", raw_name)
         msg = msg.replace("{vehiculo}", contact.get("vehicle", "tu unidad de interés"))
         msg = msg.replace("{bot_name}", self.bot_name)
@@ -187,7 +207,6 @@ class SenderService:
         msg = msg.replace("{notas}", contact.get("notes", ""))
         msg = msg.replace("{resumen}", contact.get("resumen", ""))
 
-        # Clean up any unreplaced placeholders
         msg = re.sub(r'\{mensaje\}', '', msg)
         msg = re.sub(r'\s+', ' ', msg).strip()
 
@@ -197,10 +216,7 @@ class SenderService:
     # EVOLUTION API — SEND MESSAGE
     # ──────────────────────────────────────────────────────────
     async def _send_whatsapp(self, phone: str, text: str, http_client: httpx.AsyncClient) -> Dict:
-        """
-        Send a WhatsApp text message via Evolution API.
-        Returns: {"success": True/False, "error": "..."}
-        """
+        """Send a WhatsApp text message via Evolution API."""
         jid = phone_for_evolution(phone)
         if not jid:
             return {"success": False, "error": f"Invalid phone: {phone}"}
@@ -236,23 +252,13 @@ class SenderService:
     # CAMPAIGN EXECUTION
     # ──────────────────────────────────────────────────────────
     async def start_campaign(self, group_id: str, memory_store=None, force: bool = False) -> Dict:
-        """
-        Start sending messages to all pending contacts in a Monday group.
-        Runs as a background task with rate limiting.
-
-        Args:
-            force: If True, bypass send window check (for testing).
-
-        Returns immediately with campaign status.
-        """
+        """Start sending messages to all pending contacts in a Monday group."""
         if group_id in self._active_campaigns and self._active_campaigns[group_id]:
             return {"status": "already_running", "group_id": group_id}
 
-        # Remove from paused if it was
         self._paused_campaigns.discard(group_id)
         self._active_campaigns[group_id] = True
 
-        # Launch background task
         asyncio.create_task(self._run_campaign(group_id, memory_store, force=force))
 
         return {"status": "started", "group_id": group_id, "force": force}
@@ -271,12 +277,13 @@ class SenderService:
         1. Send in batches of 15, then pause 3-5 min
         2. Random delay 15-45s between each message
         3. Max 40/hour, 200/day
-        4. Stops at end of send window, resumes next day
+        4. L-V: 9-18, Sáb: 9-14, Dom: no envía
+        5. Stops at end of send window, resumes next time campaign is started
         """
         logger.info(f"🚀 Campaign started for group: {group_id} (force={force})")
         sent = 0
         errors = 0
-        batch_count = 0  # messages sent in current batch
+        batch_count = 0
 
         try:
             contacts = await monday_followup.get_pending_contacts(group_id, limit=1000)
@@ -287,6 +294,15 @@ class SenderService:
                 self._active_campaigns[group_id] = False
                 return
 
+            now = get_mexico_now()
+            schedule = get_today_schedule(now)
+            schedule_label = f"{schedule[0]}-{schedule[1]}" if schedule else "CERRADO"
+            day_names = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+            logger.info(
+                f"📅 Today: {day_names[now.weekday()]} | Schedule: {schedule_label} | "
+                f"Contacts: {len(contacts)}"
+            )
+
             async with httpx.AsyncClient(timeout=30.0) as http_client:
                 for i, contact in enumerate(contacts):
                     # ── Check stop conditions ──
@@ -294,21 +310,20 @@ class SenderService:
                         logger.info(f"⏸️ Campaign {group_id} paused after {sent} sends")
                         break
 
-                    # Check send window (skip if force=True)
-                    if not force and not self._is_within_send_window():
+                    # Check schedule (skip if force=True)
+                    if not force and not is_office_hours():
                         logger.info(
-                            f"🕐 Outside send window ({self.send_window_start}-{self.send_window_end}), "
-                            f"stopping. Sent {sent} today. Remaining: {len(contacts) - i}"
+                            f"🕐 Outside office hours, stopping. "
+                            f"Sent {sent} today. Remaining: {len(contacts) - i}"
                         )
                         break
 
-                    # Check hourly limit
+                    # Check hourly limit — wait instead of stopping
                     if not self._check_hourly_limit():
                         logger.warning(
                             f"🛑 Hourly limit ({self.max_per_hour}) reached. "
-                            f"Waiting for next hour... Sent so far: {sent}"
+                            f"Waiting 60s... Sent so far: {sent}"
                         )
-                        # Wait until next hour (max 60 min)
                         await asyncio.sleep(60)
                         continue
 
@@ -316,7 +331,7 @@ class SenderService:
                     if not self._check_daily_limit():
                         logger.warning(
                             f"🛑 Daily limit ({self.max_per_day}) reached. "
-                            f"Campaign will resume tomorrow. Sent today: {sent}"
+                            f"Campaign stops. Sent today: {sent}"
                         )
                         break
 
@@ -346,10 +361,8 @@ class SenderService:
                     result = await self._send_whatsapp(phone, message, http_client)
 
                     if result["success"]:
-                        # Update Monday → "Enviado"
                         await monday_followup.update_send_date(contact["item_id"])
 
-                        # Log in SQLite if available
                         if memory_store:
                             await memory_store.log_send(
                                 phone, contact.get("group_title", group_id), "sent"
@@ -382,6 +395,10 @@ class SenderService:
 
     def get_status(self) -> Dict:
         """Get current sender status."""
+        now = get_mexico_now()
+        schedule = get_today_schedule(now)
+        day_names = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+
         return {
             "active_campaigns": {k: v for k, v in self._active_campaigns.items() if v},
             "paused_campaigns": list(self._paused_campaigns),
@@ -389,8 +406,10 @@ class SenderService:
             "max_per_hour": self.max_per_hour,
             "sends_today": self._sends_today,
             "max_per_day": self.max_per_day,
-            "send_window": f"{self.send_window_start} - {self.send_window_end}",
-            "is_within_window": self._is_within_send_window(),
+            "today": day_names[now.weekday()],
+            "schedule_today": f"{schedule[0]}-{schedule[1]}" if schedule else "CERRADO (Domingo)",
+            "is_office_hours": is_office_hours(now),
+            "current_time_mx": now.strftime("%H:%M"),
             "delay_range": f"{self.delay_min}-{self.delay_max}s",
             "batch_size": self.batch_size,
             "batch_pause": f"{self.batch_pause_min}-{self.batch_pause_max}s",

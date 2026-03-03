@@ -16,19 +16,17 @@ import logging
 import asyncio
 import random
 import time
-import datetime
 from contextlib import asynccontextmanager
 from collections import OrderedDict
 from typing import Any, Dict, Optional
 
 import httpx
-import pytz
 from fastapi import FastAPI, Request
 from pydantic_settings import BaseSettings
 
 from src.memory_store import MemoryStore
 from src.monday_service import monday_followup
-from src.sender_service import sender
+from src.sender_service import sender, is_office_hours, get_mexico_now
 from src.conversation_logic import handle_reply, detect_stop, detect_campaign_type
 from src.phone_utils import normalize_phone
 
@@ -278,7 +276,12 @@ async def _process_webhook(body: dict):
         else:
             del state.silenced_users[phone]
 
-    logger.info(f"📩 Reply from {phone[:6]}***: {text[:80]}")
+    # Determine if we're outside office hours (slower response)
+    _off_hours = not is_office_hours()
+    if _off_hours:
+        logger.info(f"🌙 Off-hours reply from {phone[:6]}***: {text[:80]}")
+    else:
+        logger.info(f"📩 Reply from {phone[:6]}***: {text[:80]}")
 
     # Look up contact in Monday
     contact = await monday_followup.find_by_phone(phone)
@@ -329,8 +332,19 @@ async def _process_webhook(body: dict):
     action = result["action"]
     summary = result["summary"]
 
-    # Send reply via Evolution
-    await _send_reply(phone, reply_text)
+    # Off-hours: add schedule notice to reply (except STOP responses)
+    if _off_hours and action != "stop":
+        now_mx = get_mexico_now()
+        if now_mx.weekday() == 6:  # Sunday
+            schedule_note = "Nuestro horario de atencion es de lunes a viernes de 9am a 6pm y sabados de 9am a 2pm."
+        elif now_mx.weekday() == 5:  # Saturday after 2pm
+            schedule_note = "Nuestro horario sabatino es de 9am a 2pm. Te atendemos el lunes a primera hora."
+        else:  # Weekday after 6pm
+            schedule_note = "Nuestro horario de atencion es de 9am a 6pm. Te atendemos a primera hora."
+        reply_text = f"{reply_text}\n\n{schedule_note}"
+
+    # Send reply via Evolution (slower if off-hours)
+    await _send_reply(phone, reply_text, slow=_off_hours)
 
     # Update conversation history
     history.append({"role": "user", "content": text})
@@ -375,7 +389,7 @@ async def _process_webhook(body: dict):
         await monday_followup.update_reply(contact["item_id"], "Respondió", summary)
 
 
-async def _send_reply(phone: str, text: str):
+async def _send_reply(phone: str, text: str, slow: bool = False):
     """Send a WhatsApp message via Evolution API."""
     normalized = normalize_phone(phone)
     if not normalized:
@@ -386,21 +400,13 @@ async def _send_reply(phone: str, text: str):
     headers = {"apikey": settings.EVOLUTION_API_KEY, "Content-Type": "application/json"}
     body = {"number": jid, "text": text}
 
-    # Typing delay — simulate human behavior
-    # During business hours (9am-6pm Mexico): quick reply (3-7s)
-    # Off-hours: longer delay (60-300s) so it doesn't look like a bot at 3am
-    try:
-        tz = pytz.timezone("America/Mexico_City")
-        hour = datetime.datetime.now(tz).hour
-    except Exception:
-        hour = datetime.datetime.now().hour
-
-    if 9 <= hour < 18:
-        delay = random.uniform(3, 7)
+    # Typing delay (simulate human)
+    # Off-hours: respond slower (15-30s) to look more natural
+    if slow:
+        delay = random.uniform(15, 30)
+        logger.info(f"🌙 Off-hours reply, waiting {delay:.0f}s")
     else:
-        delay = random.uniform(60, 300)
-        logger.info(f"🌙 Off-hours reply, waiting {delay:.0f}s to seem human")
-
+        delay = random.uniform(3, 7)
     await asyncio.sleep(delay)
 
     try:
