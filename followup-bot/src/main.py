@@ -414,15 +414,15 @@ async def list_groups():
 
 
 @app.post("/admin/start/{group_id}")
-async def start_campaign(group_id: str):
+async def start_campaign(group_id: str, force: bool = False):
     """
     Start sending messages to pending contacts in a Monday group.
-    Runs in background with rate limiting.
+    Use ?force=true to bypass the send window check (for testing).
     """
     if not monday_followup.is_configured():
         return {"error": "Monday.com not configured"}
 
-    result = await sender.start_campaign(group_id, memory_store=state.memory)
+    result = await sender.start_campaign(group_id, memory_store=state.memory, force=force)
     return result
 
 

@@ -209,11 +209,14 @@ class SenderService:
     # ──────────────────────────────────────────────────────────
     # CAMPAIGN EXECUTION
     # ──────────────────────────────────────────────────────────
-    async def start_campaign(self, group_id: str, memory_store=None) -> Dict:
+    async def start_campaign(self, group_id: str, memory_store=None, force: bool = False) -> Dict:
         """
         Start sending messages to all pending contacts in a Monday group.
         Runs as a background task with rate limiting.
-        
+
+        Args:
+            force: If True, bypass send window check (for testing).
+
         Returns immediately with campaign status.
         """
         if group_id in self._active_campaigns and self._active_campaigns[group_id]:
@@ -224,9 +227,9 @@ class SenderService:
         self._active_campaigns[group_id] = True
 
         # Launch background task
-        asyncio.create_task(self._run_campaign(group_id, memory_store))
+        asyncio.create_task(self._run_campaign(group_id, memory_store, force=force))
 
-        return {"status": "started", "group_id": group_id}
+        return {"status": "started", "group_id": group_id, "force": force}
 
     async def pause_campaign(self, group_id: str) -> Dict:
         """Pause an active campaign."""
@@ -234,16 +237,17 @@ class SenderService:
         self._active_campaigns[group_id] = False
         return {"status": "paused", "group_id": group_id}
 
-    async def _run_campaign(self, group_id: str, memory_store=None):
+    async def _run_campaign(self, group_id: str, memory_store=None, force: bool = False):
         """
         Background task: iterate through pending contacts and send messages.
         """
-        logger.info(f"🚀 Campaign started for group: {group_id}")
+        logger.info(f"🚀 Campaign started for group: {group_id} (force={force})")
         sent = 0
         errors = 0
 
         try:
             contacts = await monday_followup.get_pending_contacts(group_id, limit=200)
+            logger.info(f"📋 Got {len(contacts)} pending contacts for group {group_id}")
 
             if not contacts:
                 logger.info(f"📭 No pending contacts in group {group_id}")
@@ -257,8 +261,8 @@ class SenderService:
                         logger.info(f"⏸️ Campaign {group_id} paused after {sent} sends")
                         break
 
-                    # Check send window
-                    if not self._is_within_send_window():
+                    # Check send window (skip if force=True)
+                    if not force and not self._is_within_send_window():
                         logger.info(f"🕐 Outside send window ({self.send_window_start}-{self.send_window_end}), stopping")
                         break
 
