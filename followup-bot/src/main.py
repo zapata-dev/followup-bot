@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     # Reply to contacts not found in Monday (useful for testing)
     REPLY_TO_UNKNOWN_CONTACTS: bool = True
 
+    # Off-hours schedule messages (set to empty "" to disable)
+    OFF_HOURS_MSG_SUNDAY: str = "Nuestro horario de atencion es de lunes a viernes de 9am a 6pm y sabados de 9am a 2pm."
+    OFF_HOURS_MSG_SATURDAY: str = "Nuestro horario sabatino es de 9am a 2pm. Te atendemos el lunes a primera hora."
+    OFF_HOURS_MSG_WEEKNIGHT: str = "Nuestro horario de atencion es de 9am a 6pm. Te atendemos a primera hora."
+
     class Config:
         env_file = ".env"
         extra = "ignore"
@@ -333,15 +338,18 @@ async def _process_webhook(body: dict):
     summary = result["summary"]
 
     # Off-hours: add schedule notice to reply (except STOP responses)
+    # Configurable via env vars: OFF_HOURS_MSG_SUNDAY, OFF_HOURS_MSG_SATURDAY, OFF_HOURS_MSG_WEEKNIGHT
+    # Set any to "" (empty) in Render to disable that specific message
     if _off_hours and action != "stop":
         now_mx = get_mexico_now()
         if now_mx.weekday() == 6:  # Sunday
-            schedule_note = "Nuestro horario de atencion es de lunes a viernes de 9am a 6pm y sabados de 9am a 2pm."
+            schedule_note = settings.OFF_HOURS_MSG_SUNDAY
         elif now_mx.weekday() == 5:  # Saturday after 2pm
-            schedule_note = "Nuestro horario sabatino es de 9am a 2pm. Te atendemos el lunes a primera hora."
+            schedule_note = settings.OFF_HOURS_MSG_SATURDAY
         else:  # Weekday after 6pm
-            schedule_note = "Nuestro horario de atencion es de 9am a 6pm. Te atendemos a primera hora."
-        reply_text = f"{reply_text}\n\n{schedule_note}"
+            schedule_note = settings.OFF_HOURS_MSG_WEEKNIGHT
+        if schedule_note:
+            reply_text = f"{reply_text}\n\n{schedule_note}"
 
     # Send reply via Evolution (slower if off-hours)
     await _send_reply(phone, reply_text, slow=_off_hours)
