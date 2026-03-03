@@ -124,14 +124,19 @@ class MondayFollowupService:
         return contacts
 
     async def _get_group_items(self, group_id: str) -> List[Dict]:
-        """Fetch all items from a specific group (no status filter)."""
-        query = """
+        """Fetch all items from a specific group with pagination (supports 1000+)."""
+        all_items = []
+        cursor = None
+
+        # First page
+        first_query = """
         query ($board_id: [ID!]!, $group_id: [String!]!) {
             boards(ids: $board_id) {
                 groups(ids: $group_id) {
                     id
                     title
                     items_page(limit: 500) {
+                        cursor
                         items {
                             id
                             name
@@ -147,7 +152,7 @@ class MondayFollowupService:
             }
         }
         """
-        data = await self._graphql(query, {
+        data = await self._graphql(first_query, {
             "board_id": [int(self.board_id)],
             "group_id": [group_id],
         })
@@ -155,7 +160,38 @@ class MondayFollowupService:
         groups = data.get("data", {}).get("boards", [{}])[0].get("groups", [])
         if not groups:
             return []
-        return groups[0].get("items_page", {}).get("items", [])
+
+        page = groups[0].get("items_page", {})
+        all_items.extend(page.get("items", []))
+        cursor = page.get("cursor")
+
+        # Subsequent pages using next_items_page
+        while cursor:
+            next_query = """
+            query ($cursor: String!) {
+                next_items_page(limit: 500, cursor: $cursor) {
+                    cursor
+                    items {
+                        id
+                        name
+                        group { id title }
+                        column_values {
+                            id
+                            text
+                            value
+                        }
+                    }
+                }
+            }
+            """
+            data = await self._graphql(next_query, {"cursor": cursor})
+            page = data.get("data", {}).get("next_items_page", {})
+            all_items.extend(page.get("items", []))
+            cursor = page.get("cursor")
+            logger.info(f"📄 Fetched page, total items so far: {len(all_items)}")
+
+        logger.info(f"📋 Total items fetched from group {group_id}: {len(all_items)}")
+        return all_items
 
     # ──────────────────────────────────────────────────────────
     # READ: Get all groups (campaigns)

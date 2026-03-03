@@ -1,6 +1,13 @@
 """
 Sender Service — Motor de envío outbound con rate limiting.
 Lee contactos pendientes de Monday, envía por Evolution API, actualiza estatus.
+
+Estrategia anti-baneo para volumen alto (300-1000+ contactos):
+- Envía en lotes (batches) con descanso entre lotes
+- Delay aleatorio variable entre mensajes (no uniforme)
+- Límite por hora y por día
+- Ventana horaria configurable
+- Si llega al límite diario, se detiene y puede retomar al día siguiente
 """
 import os
 import re
@@ -22,13 +29,13 @@ logger = logging.getLogger(__name__)
 class SenderService:
     """
     Motor de envío outbound con protecciones anti-baneo.
-    
-    Flujo:
-    1. Lee contactos con status "Pendiente" de un grupo de Monday
-    2. Personaliza el template con datos del contacto
-    3. Envía vía Evolution API con delay aleatorio
-    4. Actualiza Monday a "Enviado"
-    5. Respeta ventana horaria y rate limits
+
+    Estrategia para 1000 contactos:
+    - Lotes de 15-20 mensajes, luego pausa de 3-5 min
+    - Delay entre mensajes: 15-45s (aleatorio, no uniforme)
+    - Máximo 40/hora, 200/día
+    - Ventana: 9am-6pm México
+    - Un día: ~200 contactos. 1000 contactos = ~5 días hábiles.
     """
 
     def __init__(self):
@@ -37,12 +44,18 @@ class SenderService:
         self.evo_key = os.getenv("EVOLUTION_API_KEY", "")
         self.evo_instance = os.getenv("EVO_INSTANCE", "Seguimiento")
 
-        # Rate limiting
-        self.delay_min = int(os.getenv("SEND_DELAY_MIN", "10"))
-        self.delay_max = int(os.getenv("SEND_DELAY_MAX", "20"))
-        self.max_per_hour = int(os.getenv("MAX_SENDS_PER_HOUR", "60"))
+        # Rate limiting — conservative defaults for WhatsApp safety
+        self.delay_min = int(os.getenv("SEND_DELAY_MIN", "15"))
+        self.delay_max = int(os.getenv("SEND_DELAY_MAX", "45"))
+        self.max_per_hour = int(os.getenv("MAX_SENDS_PER_HOUR", "40"))
+        self.max_per_day = int(os.getenv("MAX_SENDS_PER_DAY", "200"))
         self.send_window_start = os.getenv("SEND_WINDOW_START", "09:00")
         self.send_window_end = os.getenv("SEND_WINDOW_END", "18:00")
+
+        # Batch settings — send N messages, then rest
+        self.batch_size = int(os.getenv("BATCH_SIZE", "15"))
+        self.batch_pause_min = int(os.getenv("BATCH_PAUSE_MIN", "180"))   # 3 min
+        self.batch_pause_max = int(os.getenv("BATCH_PAUSE_MAX", "300"))   # 5 min
 
         # Default template (can be overridden per contact in Monday)
         self.default_template = os.getenv(
@@ -95,7 +108,9 @@ class SenderService:
 
         # Runtime state
         self._sends_this_hour = 0
+        self._sends_today = 0
         self._hour_reset_at = None
+        self._day_reset_at = None
         self._active_campaigns: Dict[str, bool] = {}  # group_id → is_running
         self._paused_campaigns: set = set()
 
@@ -126,6 +141,17 @@ class SenderService:
 
         return self._sends_this_hour < self.max_per_hour
 
+    def _check_daily_limit(self) -> bool:
+        """Check if we're within the daily send limit."""
+        now = self._get_mexico_now()
+        current_day = now.strftime("%Y-%m-%d")
+
+        if self._day_reset_at != current_day:
+            self._day_reset_at = current_day
+            self._sends_today = 0
+
+        return self._sends_today < self.max_per_day
+
     # ──────────────────────────────────────────────────────────
     # TEMPLATE PERSONALIZATION
     # ──────────────────────────────────────────────────────────
@@ -133,25 +159,25 @@ class SenderService:
         """
         Build personalized message from template + contact data.
         Priority: contact-level template (Monday) > campaign template > default template.
-        
+
         Campaign type is auto-detected from the Monday group title.
         """
         # 1. Per-contact template override (if set in Monday column)
         per_contact_template = contact.get("template", "").strip()
-        
+
         if per_contact_template:
             template = per_contact_template
         else:
             # 2. Detect campaign type from group title
             from src.conversation_logic import detect_campaign_type
             campaign_type = detect_campaign_type(contact.get("group_title", ""))
-            
+
             # 3. Use campaign-specific template or default
             template = self.campaign_templates.get(campaign_type, self.default_template)
 
         # Extract name (clean Monday item name: "David Rojas | 5213131073749" → "David Rojas")
         raw_name = contact.get("name", "").split("|")[0].strip() or "cliente"
-        
+
         # Build message
         msg = template.replace("{nombre}", raw_name)
         msg = msg.replace("{vehiculo}", contact.get("vehicle", "tu unidad de interés"))
@@ -240,13 +266,20 @@ class SenderService:
     async def _run_campaign(self, group_id: str, memory_store=None, force: bool = False):
         """
         Background task: iterate through pending contacts and send messages.
+
+        Anti-ban strategy:
+        1. Send in batches of 15, then pause 3-5 min
+        2. Random delay 15-45s between each message
+        3. Max 40/hour, 200/day
+        4. Stops at end of send window, resumes next day
         """
         logger.info(f"🚀 Campaign started for group: {group_id} (force={force})")
         sent = 0
         errors = 0
+        batch_count = 0  # messages sent in current batch
 
         try:
-            contacts = await monday_followup.get_pending_contacts(group_id, limit=200)
+            contacts = await monday_followup.get_pending_contacts(group_id, limit=1000)
             logger.info(f"📋 Got {len(contacts)} pending contacts for group {group_id}")
 
             if not contacts:
@@ -255,23 +288,49 @@ class SenderService:
                 return
 
             async with httpx.AsyncClient(timeout=30.0) as http_client:
-                for contact in contacts:
-                    # Check if paused
+                for i, contact in enumerate(contacts):
+                    # ── Check stop conditions ──
                     if group_id in self._paused_campaigns:
                         logger.info(f"⏸️ Campaign {group_id} paused after {sent} sends")
                         break
 
                     # Check send window (skip if force=True)
                     if not force and not self._is_within_send_window():
-                        logger.info(f"🕐 Outside send window ({self.send_window_start}-{self.send_window_end}), stopping")
+                        logger.info(
+                            f"🕐 Outside send window ({self.send_window_start}-{self.send_window_end}), "
+                            f"stopping. Sent {sent} today. Remaining: {len(contacts) - i}"
+                        )
                         break
 
                     # Check hourly limit
                     if not self._check_hourly_limit():
-                        logger.warning(f"🛑 Hourly limit ({self.max_per_hour}) reached, stopping")
+                        logger.warning(
+                            f"🛑 Hourly limit ({self.max_per_hour}) reached. "
+                            f"Waiting for next hour... Sent so far: {sent}"
+                        )
+                        # Wait until next hour (max 60 min)
+                        await asyncio.sleep(60)
+                        continue
+
+                    # Check daily limit
+                    if not self._check_daily_limit():
+                        logger.warning(
+                            f"🛑 Daily limit ({self.max_per_day}) reached. "
+                            f"Campaign will resume tomorrow. Sent today: {sent}"
+                        )
                         break
 
-                    # Get phone
+                    # ── Batch pause: rest every N messages ──
+                    if batch_count >= self.batch_size:
+                        pause = random.uniform(self.batch_pause_min, self.batch_pause_max)
+                        logger.info(
+                            f"☕ Batch pause: {sent} sent, resting {pause:.0f}s "
+                            f"before next batch..."
+                        )
+                        await asyncio.sleep(pause)
+                        batch_count = 0
+
+                    # ── Get phone ──
                     phone = normalize_phone(contact.get("phone", ""))
                     if not phone:
                         logger.warning(f"⚠️ Skip contact {contact['item_id']}: invalid phone")
@@ -279,36 +338,38 @@ class SenderService:
                         errors += 1
                         continue
 
-                    # Personalize message
+                    # ── Personalize message ──
                     message = self._personalize_message(contact)
 
-                    # Send
+                    # ── Send ──
                     logger.info(f"📤 Sending to {phone[:6]}*** ({sent + 1}/{len(contacts)})")
                     result = await self._send_whatsapp(phone, message, http_client)
 
                     if result["success"]:
                         # Update Monday → "Enviado"
                         await monday_followup.update_send_date(contact["item_id"])
-                        
+
                         # Log in SQLite if available
                         if memory_store:
                             await memory_store.log_send(
                                 phone, contact.get("group_title", group_id), "sent"
                             )
-                        
+
                         sent += 1
+                        batch_count += 1
                         self._sends_this_hour += 1
+                        self._sends_today += 1
                     else:
                         logger.error(f"❌ Failed to send to {phone[:6]}***: {result['error']}")
                         await monday_followup.mark_error(contact["item_id"], result["error"])
-                        
+
                         if memory_store:
                             await memory_store.log_send(
                                 phone, contact.get("group_title", group_id), "error", result["error"]
                             )
                         errors += 1
 
-                    # Anti-ban delay
+                    # ── Anti-ban delay between messages ──
                     delay = random.uniform(self.delay_min, self.delay_max)
                     logger.debug(f"⏳ Waiting {delay:.1f}s before next send...")
                     await asyncio.sleep(delay)
@@ -326,9 +387,13 @@ class SenderService:
             "paused_campaigns": list(self._paused_campaigns),
             "sends_this_hour": self._sends_this_hour,
             "max_per_hour": self.max_per_hour,
+            "sends_today": self._sends_today,
+            "max_per_day": self.max_per_day,
             "send_window": f"{self.send_window_start} - {self.send_window_end}",
             "is_within_window": self._is_within_send_window(),
             "delay_range": f"{self.delay_min}-{self.delay_max}s",
+            "batch_size": self.batch_size,
+            "batch_pause": f"{self.batch_pause_min}-{self.batch_pause_max}s",
         }
 
 
