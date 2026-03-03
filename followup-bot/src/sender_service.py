@@ -42,7 +42,7 @@ class SenderService:
         self.delay_max = int(os.getenv("SEND_DELAY_MAX", "20"))
         self.max_per_hour = int(os.getenv("MAX_SENDS_PER_HOUR", "60"))
         self.send_window_start = os.getenv("SEND_WINDOW_START", "09:00")
-        self.send_window_end = os.getenv("SEND_WINDOW_END", "14:00")
+        self.send_window_end = os.getenv("SEND_WINDOW_END", "18:00")
 
         # Default template (can be overridden per contact in Monday)
         self.default_template = os.getenv(

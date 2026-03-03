@@ -16,11 +16,13 @@ import logging
 import asyncio
 import random
 import time
+import datetime
 from contextlib import asynccontextmanager
 from collections import OrderedDict
 from typing import Any, Dict, Optional
 
 import httpx
+import pytz
 from fastapi import FastAPI, Request
 from pydantic_settings import BaseSettings
 
@@ -384,8 +386,21 @@ async def _send_reply(phone: str, text: str):
     headers = {"apikey": settings.EVOLUTION_API_KEY, "Content-Type": "application/json"}
     body = {"number": jid, "text": text}
 
-    # Typing delay (simulate human)
-    delay = random.uniform(3, 7)
+    # Typing delay — simulate human behavior
+    # During business hours (9am-6pm Mexico): quick reply (3-7s)
+    # Off-hours: longer delay (60-300s) so it doesn't look like a bot at 3am
+    try:
+        tz = pytz.timezone("America/Mexico_City")
+        hour = datetime.datetime.now(tz).hour
+    except Exception:
+        hour = datetime.datetime.now().hour
+
+    if 9 <= hour < 18:
+        delay = random.uniform(3, 7)
+    else:
+        delay = random.uniform(60, 300)
+        logger.info(f"🌙 Off-hours reply, waiting {delay:.0f}s to seem human")
+
     await asyncio.sleep(delay)
 
     try:
