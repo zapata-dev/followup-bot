@@ -172,6 +172,53 @@ class MondayFollowupService:
         return [{"id": g["id"], "title": g["title"]} for g in groups]
 
     # ──────────────────────────────────────────────────────────
+    # DEBUG: Show board structure and column IDs
+    # ──────────────────────────────────────────────────────────
+    async def get_board_structure(self) -> Dict:
+        """Get full board structure: columns, groups, and sample items for debugging."""
+        query = """
+        query ($board_id: [ID!]!) {
+            boards(ids: $board_id) {
+                name
+                columns {
+                    id
+                    title
+                    type
+                }
+                groups {
+                    id
+                    title
+                }
+            }
+        }
+        """
+        data = await self._graphql(query, {"board_id": [int(self.board_id)]})
+        board = data.get("data", {}).get("boards", [{}])[0]
+
+        # Show what the bot is currently configured to use
+        configured = {
+            "status_col": self.status_col_id,
+            "dedupe_col": self.dedupe_col_id,
+            "phone_col": self.phone_col_id,
+            "vehicle_col": self.vehicle_col_id,
+            "template_col": self.template_col_id,
+            "send_date_col": self.send_date_col_id,
+            "reply_date_col": self.reply_date_col_id,
+            "notes_col": self.notes_col_id,
+            "reply_col": self.reply_col_id,
+            "error_col": self.error_col_id,
+            "resumen_col": self.resumen_col_id,
+        }
+
+        return {
+            "board_name": board.get("name", ""),
+            "board_id": self.board_id,
+            "columns": board.get("columns", []),
+            "groups": board.get("groups", []),
+            "configured_column_ids": configured,
+        }
+
+    # ──────────────────────────────────────────────────────────
     # SEARCH: Find contact by phone (for webhook replies)
     # ──────────────────────────────────────────────────────────
     async def find_by_phone(self, phone_clean: str) -> Optional[Dict]:

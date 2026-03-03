@@ -437,3 +437,12 @@ async def pause_campaign(group_id: str):
 async def sender_status():
     """Get current sender status."""
     return sender.get_status()
+
+
+@app.get("/admin/debug/columns")
+async def debug_columns():
+    """Show board structure and column IDs for debugging."""
+    if not monday_followup.is_configured():
+        return {"error": "Monday.com not configured"}
+    structure = await monday_followup.get_board_structure()
+    return structure
