@@ -3,7 +3,7 @@ Admin Dashboard — Self-contained HTML dashboard for campaign management.
 Served as inline HTML from GET /admin.
 """
 
-DASHBOARD_HTML = """<!DOCTYPE html>
+DASHBOARD_HTML = r"""<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -187,6 +187,7 @@ function formatUptime(seconds) {
 // ── API Calls ──
 async function fetchJSON(url, opts = {}) {
     const r = await fetch(url, opts);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
 }
 
@@ -200,6 +201,7 @@ async function loadHealth() {
     } catch (e) {
         document.getElementById('healthDot').className = 'status-dot err';
         document.getElementById('healthText').textContent = 'Sin conexion';
+        addLog('Error health: ' + e.message, 'log-error');
         return null;
     }
 }
@@ -213,15 +215,17 @@ async function loadStatus() {
         document.getElementById('activeCampaigns').textContent = Object.keys(d.active_campaigns || {}).length;
 
         const wb = document.getElementById('windowBadge');
-        if (d.is_within_window) {
-            wb.textContent = 'Ventana abierta';
+        if (d.is_office_hours) {
+            wb.textContent = 'Ventana abierta (' + (d.schedule_today || '') + ')';
             wb.className = 'window-badge open';
         } else {
-            wb.textContent = 'Fuera de horario';
+            wb.textContent = 'Fuera de horario (' + (d.current_time_mx || '') + ' MX)';
             wb.className = 'window-badge closed';
         }
+        addLog('Status cargado: ' + (d.today || '') + ' ' + (d.current_time_mx || '') + ' — ' + (d.is_office_hours ? 'Horario activo' : 'Fuera de horario'), 'log-info');
         return d;
     } catch (e) {
+        addLog('Error cargando status: ' + e.message, 'log-error');
         return null;
     }
 }
@@ -232,7 +236,8 @@ async function loadGroups() {
         groups = d.groups || [];
         renderCampaigns();
     } catch (e) {
-        document.getElementById('campaignGrid').innerHTML = '<div class="empty-state"><p>Error cargando campanas</p></div>';
+        document.getElementById('campaignGrid').innerHTML = '<div class="empty-state"><p>Error cargando campanas: ' + e.message + '</p></div>';
+        addLog('Error groups: ' + e.message, 'log-error');
     }
 }
 
