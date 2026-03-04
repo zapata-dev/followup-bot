@@ -5,6 +5,7 @@ Outbound WhatsApp bot for customer follow-up campaigns.
 Endpoints:
   GET  /health                    → Health check + metrics
   POST /webhook                   → Evolution API webhook (incoming replies)
+  GET  /admin                     → Admin dashboard UI
   GET  /admin/groups              → List campaign groups from Monday
   POST /admin/start/{group_id}    → Start sending for a campaign group
   POST /admin/pause/{group_id}    → Pause a running campaign
@@ -22,6 +23,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
 from pydantic_settings import BaseSettings
 
 from src.memory_store import MemoryStore
@@ -29,6 +31,7 @@ from src.monday_service import monday_followup
 from src.sender_service import sender, is_office_hours, get_mexico_now
 from src.conversation_logic import handle_reply, detect_stop, detect_campaign_type
 from src.phone_utils import normalize_phone
+from src.dashboard import DASHBOARD_HTML
 
 # ============================================================
 # BOT / AUTO-RESPONDER DETECTION
@@ -464,6 +467,12 @@ async def _send_reply(phone: str, text: str, slow: bool = False):
 # ============================================================
 # ADMIN ENDPOINTS
 # ============================================================
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard():
+    """Serve the admin dashboard UI."""
+    return DASHBOARD_HTML
+
+
 @app.get("/admin/groups")
 async def list_groups():
     """List all campaign groups from Monday board."""
