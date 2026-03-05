@@ -71,14 +71,22 @@ async def _llm_completion(messages: list, max_tokens: int = 200, temperature: fl
 # ============================================================
 # TIME
 # ============================================================
+_DIAS_SEMANA = {
+    "Monday": "Lunes", "Tuesday": "Martes", "Wednesday": "Miércoles",
+    "Thursday": "Jueves", "Friday": "Viernes", "Saturday": "Sábado", "Sunday": "Domingo",
+}
+
+
 def get_mexico_time() -> Tuple[datetime, str]:
     try:
         tz = pytz.timezone("America/Mexico_City")
         now = datetime.now(tz)
-        return now, now.strftime("%A %I:%M %p")
     except Exception:
         now = datetime.now()
-        return now, now.strftime("%A %I:%M %p")
+    dia_en = now.strftime("%A")
+    dia_es = _DIAS_SEMANA.get(dia_en, dia_en)
+    time_str = f"{dia_es} {now.strftime('%d/%m/%Y')} {now.strftime('%I:%M %p')}"
+    return now, time_str
 
 
 # ============================================================
@@ -190,6 +198,21 @@ LECTURA DE INTENCION:
 SOLO di "ya no te contactaremos" si el cliente dice EXPLICITAMENTE: "no me interesa",
 "no gracias", "no me contacten", "dejen de escribirme", "borrenme", "alto", "stop".
 Cualquier otra cosa (quejas, preguntas, bromas, ambiguedad) es engagement activo.
+
+HORARIO DE ATENCION Y CITAS (CRITICO — respeta SIEMPRE):
+- Lunes a Viernes: 9:00 AM a 6:00 PM
+- Sabados: 9:00 AM a 2:00 PM
+- Domingos: CERRADO
+- La hora y fecha actuales estan en el campo "Hora" arriba. USALAS para saber que dia y hora es.
+- NUNCA agendes, sugieras ni confirmes citas fuera de este horario.
+- Si el cliente pide una cita en horario cerrado (domingo, o despues de las 6pm entre semana,
+  o despues de las 2pm en sabado), sugiere el siguiente horario disponible.
+  Ejemplo: si es sabado 3pm, sugiere "el lunes a las 9am".
+  Si es domingo, sugiere "el lunes a primera hora".
+  Si es viernes 7pm, sugiere "manana sabado a las 9am" o "el lunes".
+- Si el cliente quiere agendar, pregunta dia y hora DENTRO del horario.
+- NO inventes disponibilidad de horarios especificos (ej: "a las 10:30 hay espacio").
+  Solo confirma que el horario que pide el cliente cae dentro del rango de atencion.
 
 FORMATO: Solo texto del mensaje. Sin prefijos, sin comillas, sin emojis. Maximo 2 oraciones.
 """
