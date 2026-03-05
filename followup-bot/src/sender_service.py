@@ -117,13 +117,16 @@ class SenderService:
                 "si sigues evaluando esa opcion o si ya resolviste tu compra."
             )),
             "assigned_lead": os.getenv("TEMPLATE_ASSIGNED_LEAD", (
-                "Hola {nombre}, te escribo de {company_name}. "
-                "Queria asegurarme de que te hayan atendido bien. "
+                "Hola {nombre}, soy {bot_name} de {company_name}. "
                 "Te pudieron resolver tu consulta sobre el {vehiculo}?"
             )),
             "attended_appointment": os.getenv("TEMPLATE_ATTENDED_APPOINTMENT", (
                 "Hola {nombre}, te escribo de {company_name}. "
                 "Que tal te parecio el {vehiculo} cuando viniste a verlo?"
+            )),
+            "customer_service": os.getenv("TEMPLATE_CUSTOMER_SERVICE", (
+                "Hola {nombre}, soy {bot_name} de {company_name}. "
+                "Vi que te interesa el {vehiculo}, como te han atendido con esa unidad?"
             )),
         }
 
@@ -347,6 +350,14 @@ class SenderService:
                             await memory_store.log_send(
                                 phone, contact.get("group_title", group_id), "sent"
                             )
+                            # Save outbound message to conversation history
+                            # so the AI knows what was said first when client replies
+                            session = await memory_store.get(phone)
+                            history = []
+                            if session and session.get("context", {}).get("history"):
+                                history = session["context"]["history"]
+                            history.append({"role": "assistant", "content": message})
+                            await memory_store.upsert(phone, "sent", {"history": history})
 
                         sent += 1
                         batch_count += 1
