@@ -356,18 +356,37 @@ class MondayFollowupService:
             self.send_date_col_id: {"date": today}
         })
 
-    async def update_reply(self, item_id: str, new_status: str, reply_summary: str = ""):
-        """Update status on reply and optionally set reply date + summary."""
+    async def update_reply(
+        self,
+        item_id: str,
+        new_status: str,
+        reply_summary: str = "",
+        resumen: str = "",
+    ):
+        """
+        Update all relevant fields on reply:
+        - Status label
+        - Reply date (today)
+        - Last contact date (today)
+        - Reply summary (what the client said)
+        - Resumen (AI-generated running conversation summary)
+        """
         try:
             tz = pytz.timezone("America/Mexico_City")
             today = datetime.now(tz).strftime("%Y-%m-%d")
         except Exception:
             today = datetime.now().strftime("%Y-%m-%d")
 
-        extra = {self.reply_date_col_id: {"date": today}}
-        
+        extra = {
+            self.reply_date_col_id: {"date": today},
+            self.last_contact_col_id: {"date": today},
+        }
+
         if reply_summary and self.reply_col_id:
             extra[self.reply_col_id] = {"text": reply_summary[:2000]}
+
+        if resumen and self.resumen_col_id:
+            extra[self.resumen_col_id] = {"text": resumen[:2000]}
 
         await self.update_status(item_id, new_status, extra)
 

@@ -444,3 +444,59 @@ def _summarize_exchange(user_text: str, bot_reply: str, action: str) -> str:
     if action == "interested":
         return f"INTERESADO: Cliente mostró interés. Dijo: '{t}'"
     return f"Respondió: '{t}'"
+
+
+async def generate_conversation_resumen(
+    conversation_history: List[Dict[str, str]],
+    user_text: str,
+    bot_reply: str,
+    contact_data: Dict[str, Any],
+    previous_resumen: str = "",
+) -> str:
+    """
+    Generate an AI-powered running summary of the entire conversation.
+    This gets stored in the Monday 'resumen' column so the bot (and humans)
+    have full context on the next interaction.
+
+    Includes: what the client needs, tone, objections, interest level, key details.
+    """
+    # Build the full conversation for context
+    convo_text = ""
+    for msg in conversation_history[-10:]:  # Last 10 messages max
+        role = "Cliente" if msg["role"] == "user" else "Bot"
+        convo_text += f"{role}: {msg['content']}\n"
+    convo_text += f"Cliente: {user_text}\nBot: {bot_reply}\n"
+
+    prompt = f"""Resume esta conversacion de WhatsApp entre un bot de seguimiento y un cliente.
+El resumen es para uso INTERNO del equipo de ventas. Debe ser util, directo y accionable.
+
+DATOS DEL CLIENTE:
+- Nombre: {contact_data.get('name', 'Desconocido')}
+- Vehiculo de interes: {contact_data.get('vehicle', 'No especificado')}
+- Resumen anterior: {previous_resumen or 'Ninguno'}
+
+CONVERSACION:
+{convo_text}
+
+GENERA UN RESUMEN DE MAXIMO 3-4 LINEAS QUE INCLUYA:
+1. Que necesita/busca el cliente (tipo de unidad, tonelaje, uso)
+2. Nivel de interes (frio, tibio, caliente)
+3. Objeciones o problemas mencionados
+4. Siguiente paso recomendado para el vendedor
+5. Datos clave (si menciono presupuesto, plazos, ubicacion, etc.)
+
+Si hay resumen anterior, ACTUALIZALO con la nueva informacion, no repitas lo viejo.
+Solo texto plano, sin formato, sin bullets, sin emojis. Maximo 500 caracteres."""
+
+    try:
+        response = await openai_client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0.3,
+        )
+        return response.choices[0].message.content.strip()[:500]
+    except Exception as e:
+        logger.error(f"❌ Resumen generation error: {e}")
+        # Fallback: simple text summary
+        return f"Cliente dijo: {user_text[:100]}. Bot respondió: {bot_reply[:100]}"
