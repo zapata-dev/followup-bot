@@ -178,11 +178,27 @@ async def lifespan(app: FastAPI):
     await state.memory.init()
     logger.info("✅ SQLite initialized")
     
-    # OpenAI check
-    if not os.getenv("OPENAI_API_KEY"):
-        logger.warning("⚠️ OPENAI_API_KEY not set — AI replies will fail")
+    # LLM smoke test — Gemini primary, OpenAI fallback
+    from src.conversation_logic import gemini_client, _GEMINI_MODEL, openai_client, FALLBACK_MODEL
+    if os.getenv("GEMINI_API_KEY"):
+        try:
+            _test = await gemini_client.chat.completions.create(
+                model=_GEMINI_MODEL,
+                messages=[{"role": "user", "content": "Responde solo 'OK'"}],
+                max_tokens=5,
+                temperature=0,
+            )
+            logger.info(f"✅ Gemini smoke test OK — model: {_GEMINI_MODEL}, response: {_test.choices[0].message.content.strip()}")
+        except Exception as e:
+            logger.error(f"❌ Gemini smoke test FAILED: {e}")
+            logger.warning("⚠️ Gemini no disponible — se usará OpenAI como fallback")
     else:
-        logger.info("✅ OpenAI API key configured")
+        logger.info("ℹ️ GEMINI_API_KEY not set — using OpenAI only")
+
+    if not os.getenv("OPENAI_API_KEY"):
+        logger.warning("⚠️ OPENAI_API_KEY not set — AI replies will fail if Gemini also fails")
+    else:
+        logger.info(f"✅ OpenAI fallback configured — model: {FALLBACK_MODEL}")
 
     # Monday check
     if monday_followup.is_configured():
