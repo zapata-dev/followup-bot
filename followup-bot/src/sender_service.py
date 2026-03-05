@@ -103,7 +103,7 @@ class SenderService:
             "DEFAULT_TEMPLATE",
             "Hola {nombre}, te saluda {bot_name} de {company_name}. {mensaje}"
         )
-        self.bot_name = os.getenv("BOT_NAME", "Tu asesor")
+        self.bot_name = os.getenv("BOT_NAME", "Estefania Fernandez")
         self.company_name = os.getenv("COMPANY_NAME", "La empresa")
         self.company_url = os.getenv("COMPANY_URL", "")
 

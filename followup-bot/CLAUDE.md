@@ -36,7 +36,7 @@ MONDAY_API_KEY, MONDAY_BOARD_ID
 
 ### Bot Identity
 ```
-BOT_NAME="Toño Ramirez"
+BOT_NAME="Estefania Fernandez"
 COMPANY_NAME="Go-On Zapata"
 COMPANY_LOCATION="Querétaro"
 COMPANY_PRODUCT="camiones seminuevos"

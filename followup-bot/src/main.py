@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     EVO_INSTANCE: str = "Seguimiento"
 
     # Bot identity (used in prompts and templates)
-    BOT_NAME: str = "Tu asesor"
+    BOT_NAME: str = "Estefania Fernandez"
     COMPANY_NAME: str = "La empresa"
     COMPANY_LOCATION: str = "la sucursal"
     COMPANY_PRODUCT: str = "vehículos"
