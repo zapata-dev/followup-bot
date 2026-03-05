@@ -327,6 +327,13 @@ async def _process_webhook(body: dict):
     contact = await monday_followup.find_by_phone(phone)
     unknown_contact = False
 
+    if contact:
+        logger.info(
+            f"🔍 Found contact in Monday: item_id={contact['item_id']}, "
+            f"name={contact.get('name', 'N/A')}, status={contact.get('status', 'N/A')}, "
+            f"group={contact.get('group_title', 'N/A')}"
+        )
+
     if not contact:
         if not settings.REPLY_TO_UNKNOWN_CONTACTS:
             logger.info(f"🔍 Phone {phone[:6]}*** not found in Monday board, ignoring")

@@ -69,7 +69,12 @@ class MondayFollowupService:
                 data = r.json()
 
                 if "errors" in data:
-                    logger.error(f"❌ Monday GraphQL errors: {data['errors']}")
+                    # Log full detail so we can debug column format issues
+                    vars_summary = json.dumps(variables or {})[:500] if variables else "none"
+                    logger.error(
+                        f"❌ Monday GraphQL errors: {data['errors']}\n"
+                        f"   Variables sent: {vars_summary}"
+                    )
                     # If there's no usable data alongside the errors, return empty
                     if "data" not in data or data["data"] is None:
                         return {}
@@ -318,15 +323,17 @@ class MondayFollowupService:
     async def update_status(self, item_id: str, new_status: str, extra_cols: Dict = None):
         """
         Update status label and optionally other columns.
-        extra_cols: dict of {column_id: value} for additional updates.
+        Strategy: update status FIRST (critical), then extra columns separately.
+        If extra columns fail, status still gets updated.
         """
-        col_vals = {
+        if not item_id:
+            logger.warning("⚠️ update_status called with no item_id, skipping")
+            return
+
+        # STEP 1: Always update status (critical — this must succeed)
+        status_vals = {
             self.status_col_id: {"label": new_status}
         }
-
-        if extra_cols:
-            col_vals.update(extra_cols)
-
         query = """
         mutation ($item_id: ID!, $board_id: ID!, $vals: JSON!) {
             change_multiple_column_values(
@@ -337,12 +344,38 @@ class MondayFollowupService:
             ) { id }
         }
         """
-        await self._graphql(query, {
+        logger.info(f"📝 Updating item {item_id} status → {new_status}")
+        result = await self._graphql(query, {
             "item_id": int(item_id),
             "board_id": int(self.board_id),
-            "vals": json.dumps(col_vals),
+            "vals": json.dumps(status_vals),
         })
-        logger.info(f"✅ Updated item {item_id} → {new_status}")
+
+        # Check if status update succeeded
+        if result.get("data", {}).get("change_multiple_column_values", {}).get("id"):
+            logger.info(f"✅ Status updated: item {item_id} → {new_status}")
+        else:
+            logger.error(f"❌ Status update FAILED for item {item_id} → {new_status}. Response: {json.dumps(result)[:500]}")
+
+        # STEP 2: Update extra columns separately (so a bad column doesn't block status)
+        if extra_cols:
+            logger.info(f"📝 Updating {len(extra_cols)} extra columns for item {item_id}: {list(extra_cols.keys())}")
+            try:
+                extra_result = await self._graphql(query, {
+                    "item_id": int(item_id),
+                    "board_id": int(self.board_id),
+                    "vals": json.dumps(extra_cols),
+                })
+                if extra_result.get("data", {}).get("change_multiple_column_values", {}).get("id"):
+                    logger.info(f"✅ Extra columns updated for item {item_id}")
+                else:
+                    logger.error(
+                        f"❌ Extra columns update FAILED for item {item_id}. "
+                        f"Columns: {list(extra_cols.keys())}. "
+                        f"Response: {json.dumps(extra_result)[:500]}"
+                    )
+            except Exception as e:
+                logger.error(f"❌ Extra columns update crashed for item {item_id}: {e}")
 
     async def update_send_date(self, item_id: str):
         """Mark send date as today."""
