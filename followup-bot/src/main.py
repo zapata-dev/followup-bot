@@ -13,6 +13,7 @@ Endpoints:
 """
 import os
 import json
+import hmac
 import logging
 import asyncio
 import random
@@ -23,7 +24,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic_settings import BaseSettings
 
 from src.memory_store import MemoryStore
@@ -91,6 +92,10 @@ class Settings(BaseSettings):
 
     # Reply to contacts not found in Monday (useful for testing)
     REPLY_TO_UNKNOWN_CONTACTS: bool = True
+
+    # Webhook security (token-based verification)
+    # If set, webhook URL must include ?token=YOUR_SECRET to be accepted
+    WEBHOOK_SECRET: Optional[str] = None
 
     # Off-hours schedule messages (set to empty "" to disable)
     OFF_HOURS_MSG_SUNDAY: str = "Nuestro horario de atencion es de lunes a viernes de 9am a 6pm y sabados de 9am a 2pm."
@@ -192,6 +197,10 @@ async def lifespan(app: FastAPI):
     
     logger.info(f"✅ Evolution instance: {settings.EVO_INSTANCE}")
     logger.info(f"✅ Bot identity: {settings.BOT_NAME} @ {settings.COMPANY_NAME}")
+    if settings.WEBHOOK_SECRET:
+        logger.info("🔒 Webhook token verification ENABLED")
+    else:
+        logger.warning("⚠️ WEBHOOK_SECRET not set — webhook endpoint is open (set WEBHOOK_SECRET to secure it)")
     logger.info("🟢 Followup Bot ready!")
 
     yield
@@ -234,7 +243,18 @@ async def webhook(request: Request):
     Receives incoming WhatsApp messages from Evolution API.
     Processes replies from contacts who received outbound messages.
     Accepts both /webhook and /webhook/messages paths.
+
+    Security: If WEBHOOK_SECRET is set, the request must include
+    ?token=SECRET in the URL. Configure in Evolution API as:
+    https://your-domain.com/webhook?token=YOUR_SECRET
     """
+    # Verify webhook token if configured
+    if settings.WEBHOOK_SECRET:
+        token = request.query_params.get("token", "")
+        if not hmac.compare_digest(token, settings.WEBHOOK_SECRET):
+            logger.warning(f"⛔ Webhook rejected: invalid token from {request.client.host}")
+            return JSONResponse(status_code=401, content={"status": "unauthorized"})
+
     try:
         body = await request.json()
     except Exception:
