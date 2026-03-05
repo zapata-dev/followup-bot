@@ -17,16 +17,55 @@ from openai import AsyncOpenAI
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# LLM CONFIG
+# LLM CONFIG — Gemini primary, OpenAI fallback
 # ============================================================
 _LLM_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 
+# Primary: Gemini 2.5 Flash Lite via OpenAI-compatible endpoint
+_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+
+gemini_client = AsyncOpenAI(
+    api_key=_GEMINI_API_KEY,
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    max_retries=0,
+    timeout=_LLM_TIMEOUT,
+) if _GEMINI_API_KEY else None
+
+# Fallback: OpenAI
 openai_client = AsyncOpenAI(
     api_key=os.getenv("OPENAI_API_KEY", ""),
     max_retries=0,
     timeout=_LLM_TIMEOUT,
 )
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+FALLBACK_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+
+async def _llm_completion(messages: list, max_tokens: int = 200, temperature: float = 0.7) -> str:
+    """Call LLM with Gemini primary → OpenAI fallback."""
+    # Try Gemini first
+    if gemini_client:
+        try:
+            response = await gemini_client.chat.completions.create(
+                model=_GEMINI_MODEL,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+            logger.debug(f"✅ Gemini response OK")
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.warning(f"⚠️ Gemini failed, falling back to OpenAI: {e}")
+
+    # Fallback to OpenAI
+    response = await openai_client.chat.completions.create(
+        model=FALLBACK_MODEL,
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    logger.debug(f"✅ OpenAI fallback response OK")
+    return response.choices[0].message.content.strip()
 
 
 # ============================================================
@@ -70,6 +109,12 @@ CAMPAIGN_TYPE_KEYWORDS = {
     "encuesta": "attended_appointment",
     "métricas": "attended_appointment",
     "metricas": "attended_appointment",
+    "servicio": "customer_service",
+    "atencion": "customer_service",
+    "atención": "customer_service",
+    "customer service": "customer_service",
+    "calidad": "customer_service",
+    "seguimiento vendedor": "customer_service",
 }
 
 
@@ -87,6 +132,12 @@ def detect_campaign_type(group_title: str) -> str:
 # ============================================================
 _COMMON_RULES = """
 REGLAS DE COMUNICACION (CRITICAS — sigue TODAS sin excepcion):
+
+0. PRESENTACION: Si el primer mensaje de la conversacion (el template) NO incluye
+   tu nombre, presentate NATURALMENTE al inicio de tu primera respuesta.
+   Ejemplo: "Soy {bot_name}, fijate que vi que te interesa el [vehiculo]..."
+   NO lo hagas si ya te presentaste antes. Fusiona la presentacion con tu respuesta
+   de forma natural, no como algo separado.
 
 1. MAXIMO 1-2 oraciones por mensaje. WhatsApp es CHAT, no correo electronico.
    Si tu respuesta tiene mas de 2 lineas, es demasiado larga. Cortala.
@@ -116,6 +167,12 @@ MANEJO DE MENSAJES FUERA DE TEMA (piropos, bromas, coqueteo, temas random):
   "Te invito un cafe" → "Gracias, mejor dime que tipo de unidad necesitas."
   "A que equipo le vas?" → "Al equipo del trabajo pesado. Que mercancia vas a mover?"
   "Eres guapa?" → "Soy mas de camiones que de selfies. Buscas algo en especial?"
+
+USO DE DATOS DEL CLIENTE (CRITICO — personaliza SIEMPRE):
+- Si tienes el vehiculo de interes, SIEMPRE mencionalo por nombre especifico.
+  NUNCA digas "vehiculo comercial", "tu unidad", "el camion" si sabes que es un "Freightliner M2".
+- Si tienes notas o resumen previo, USALOS. No preguntes cosas que ya sabes.
+- Si el primer mensaje fue muy largo o generico, COMPENSA siendo ultra-directo y corto.
 
 INTELIGENCIA DE PRODUCTO (CRITICO — no cometas errores de negocio):
 - ESCUCHA lo que el cliente pide. Si dice "camion", NO ofrezcas pickup.
@@ -207,6 +264,38 @@ ESTRATEGIA:
 - Calificacion baja (1-3): que podrian mejorar. NO te despidas.
 - Interes de compra: facilita siguiente paso (documentos, cita).
 - No decide: pregunta uso especifico para reactivar interes.
+
+{common_rules}
+""",
+
+    "customer_service": """
+Eres {bot_name} de {company_name} en {company_location}.
+Hablas por WhatsApp para dar seguimiento de SERVICIO AL CLIENTE.
+El cliente ya fue atendido por un vendedor. Tu trabajo es verificar calidad.
+
+DATOS:
+- Cliente: {client_name}
+- Vehiculo de interes: {vehicle}
+- Notas: {notes}
+- Resumen previo: {resumen}
+- Hora: {current_time}
+
+TU ROL: Seguimiento de calidad. Eres cercana, directa y empática.
+
+REGLA CRITICA — USA LOS DATOS:
+- SIEMPRE menciona el vehiculo ESPECIFICO del cliente (ej: "el Freightliner M2",
+  "la International CV", "el Kenworth T680"). NUNCA digas "vehiculo comercial",
+  "tu unidad" ni nada generico si tienes el dato.
+- Si hay notas o resumen, usalo para contextualizar. No preguntes cosas que ya sabes.
+- Si el resumen dice que ya cotizo, no preguntes "que te interesa?" — pregunta
+  "como te fue con la cotizacion del [vehiculo]?"
+
+ESTRATEGIA:
+- Pregunta directa sobre la atencion que recibio con ESE vehiculo especifico.
+- Si todo bien: pregunta que necesita para dar el siguiente paso.
+- Si se queja: valida ("Tienes razon"), toma accion ("Yo me encargo").
+- Si ya no le interesa ese vehiculo, pregunta que cambio.
+- Siempre lleva hacia un siguiente paso claro.
 
 {common_rules}
 """,
@@ -371,9 +460,31 @@ async def handle_reply(
 
     # 3. Build system prompt with campaign-specific template
     _, time_str = get_mexico_time()
-    
+
     prompt_template = CAMPAIGN_PROMPTS.get(campaign_type, CAMPAIGN_PROMPTS["generic"])
-    
+
+    # Detect if the first outbound message included the bot's name
+    first_msg_included_name = False
+    first_msg_was_long = False
+    if conversation_history:
+        first_msg = conversation_history[0].get("content", "")
+        first_msg_included_name = BOT_NAME.lower().split()[0] in first_msg.lower()
+        first_msg_was_long = len(first_msg) > 200
+
+    # Build context hint for the AI
+    presentation_hint = ""
+    if not first_msg_included_name:
+        presentation_hint = (
+            "\n⚠️ IMPORTANTE: El primer mensaje NO incluyo tu nombre. "
+            "Presentate naturalmente al inicio de tu respuesta "
+            "(ej: 'Soy {bot_name}, ...'). Fusionalo con tu respuesta.\n"
+        ).format(bot_name=BOT_NAME)
+    if first_msg_was_long:
+        presentation_hint += (
+            "\n⚠️ El primer mensaje fue MUY LARGO. Compensa siendo ultra-directa "
+            "y breve. Maximo 1 oracion.\n"
+        )
+
     system_prompt = prompt_template.format(
         bot_name=BOT_NAME,
         company_name=COMPANY_NAME,
@@ -388,6 +499,10 @@ async def handle_reply(
         current_time=time_str,
         common_rules=_COMMON_RULES,
     )
+
+    # Append dynamic hints after the system prompt
+    if presentation_hint:
+        system_prompt += presentation_hint
 
     # 4. Build messages for GPT
     messages = [{"role": "system", "content": system_prompt}]
@@ -404,18 +519,12 @@ async def handle_reply(
     # Add current user message
     messages.append({"role": "user", "content": user_text})
 
-    # 5. Call GPT
+    # 5. Call LLM (Gemini primary → OpenAI fallback)
     try:
-        response = await openai_client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=messages,
-            max_tokens=200,
-            temperature=0.7,
-        )
-        reply = response.choices[0].message.content.strip()
+        reply = await _llm_completion(messages, max_tokens=200, temperature=0.7)
     except Exception as e:
-        logger.error(f"❌ GPT error: {e}")
-        reply = f"Gracias por tu respuesta. Te paso con un asesor para darte mejor atención."
+        logger.error(f"❌ LLM error (all providers failed): {e}")
+        reply = "Gracias por tu respuesta. Te paso con un asesor para darte mejor atención."
         action = "handoff"
 
     # 6. Post-process: if GPT response hints at handoff
@@ -489,13 +598,12 @@ Si hay resumen anterior, ACTUALIZALO con la nueva informacion, no repitas lo vie
 Solo texto plano, sin formato, sin bullets, sin emojis. Maximo 500 caracteres."""
 
     try:
-        response = await openai_client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
+        result = await _llm_completion(
+            [{"role": "user", "content": prompt}],
             max_tokens=200,
             temperature=0.3,
         )
-        return response.choices[0].message.content.strip()[:500]
+        return result[:500]
     except Exception as e:
         logger.error(f"❌ Resumen generation error: {e}")
         # Fallback: simple text summary

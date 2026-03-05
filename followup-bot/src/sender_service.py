@@ -117,13 +117,16 @@ class SenderService:
                 "si sigues evaluando esa opcion o si ya resolviste tu compra."
             )),
             "assigned_lead": os.getenv("TEMPLATE_ASSIGNED_LEAD", (
-                "Hola {nombre}, te escribo de {company_name}. "
-                "Queria asegurarme de que te hayan atendido bien. "
+                "Hola {nombre}, soy {bot_name} de {company_name}. "
                 "Te pudieron resolver tu consulta sobre el {vehiculo}?"
             )),
             "attended_appointment": os.getenv("TEMPLATE_ATTENDED_APPOINTMENT", (
                 "Hola {nombre}, te escribo de {company_name}. "
                 "Que tal te parecio el {vehiculo} cuando viniste a verlo?"
+            )),
+            "customer_service": os.getenv("TEMPLATE_CUSTOMER_SERVICE", (
+                "Hola {nombre}, soy {bot_name} de {company_name}. "
+                "Vi que te interesa el {vehiculo}, como te han atendido con esa unidad?"
             )),
         }
 
@@ -163,15 +166,74 @@ class SenderService:
     # ──────────────────────────────────────────────────────────
     # TEMPLATE PERSONALIZATION
     # ──────────────────────────────────────────────────────────
+    def _has_bot_presentation(self, text: str) -> bool:
+        """
+        Detect if a template already includes the bot's name/presentation.
+        Checks for the bot's first name (case-insensitive) in common intro patterns.
+        """
+        text_lower = text.lower()
+        bot_first_name = self.bot_name.lower().split()[0]  # e.g. "estefania"
+
+        # Direct name mention
+        if bot_first_name in text_lower:
+            return True
+
+        # Common presentation patterns (even without name)
+        presentation_patterns = [
+            r'\bsoy\s+\w+',           # "soy [nombre]"
+            r'\bte saluda\s+\w+',     # "te saluda [nombre]"
+            r'\bte escribe\s+\w+',    # "te escribe [nombre]"
+            r'\bmi nombre es\s+\w+',  # "mi nombre es [nombre]"
+            r'\ble habla\s+\w+',      # "le habla [nombre]"
+        ]
+        for pattern in presentation_patterns:
+            if re.search(pattern, text_lower):
+                return True
+
+        return False
+
+    def _inject_bot_intro(self, template: str, contact_name: str) -> str:
+        """
+        Inject a natural bot presentation at the beginning of a template
+        that doesn't already include the bot's name.
+        Finds the right insertion point (after the initial greeting).
+        """
+        # Patterns for common greetings at the start
+        greeting_pattern = re.compile(
+            r'^(hola[,.]?\s*(?:buen(?:os)?\s+(?:días|dias|día|dia|tardes?|noches?))?[,.]?\s*'
+            r'|buen(?:os)?\s+(?:días|dias|día|dia|tardes?|noches?)[,.]?\s*'
+            r'|¿?cómo\s+(?:te\s+encuentras|estás|estas)\??[,.]?\s*)',
+            re.IGNORECASE,
+        )
+
+        match = greeting_pattern.match(template)
+        if match:
+            greeting = match.group(0).rstrip().rstrip(",").rstrip(".")
+            rest = template[match.end():].lstrip()
+            # Natural join: "Hola, soy Estefania..." not "Hola Soy Estefania..."
+            intro = f"{greeting}, soy {self.bot_name} de {self.company_name}.\n{rest}"
+        else:
+            # No greeting found — prepend full intro
+            intro = f"Hola, soy {self.bot_name} de {self.company_name}.\n{template}"
+
+        return intro
+
     def _personalize_message(self, contact: Dict) -> str:
         """
         Build personalized message from template + contact data.
         Priority: contact-level template (Monday) > campaign template > default template.
+
+        If a Monday template doesn't include the bot's name, a natural
+        presentation is injected so the client always knows who's writing.
         """
         per_contact_template = contact.get("template", "").strip()
 
         if per_contact_template:
             template = per_contact_template
+            # Monday templates may not include bot name — inject intro if missing
+            if not self._has_bot_presentation(template):
+                raw_name = contact.get("name", "").split("|")[0].strip() or "cliente"
+                template = self._inject_bot_intro(template, raw_name)
         else:
             from src.conversation_logic import detect_campaign_type
             campaign_type = detect_campaign_type(contact.get("group_title", ""))
@@ -347,6 +409,14 @@ class SenderService:
                             await memory_store.log_send(
                                 phone, contact.get("group_title", group_id), "sent"
                             )
+                            # Save outbound message to conversation history
+                            # so the AI knows what was said first when client replies
+                            session = await memory_store.get(phone)
+                            history = []
+                            if session and session.get("context", {}).get("history"):
+                                history = session["context"]["history"]
+                            history.append({"role": "assistant", "content": message})
+                            await memory_store.upsert(phone, "sent", {"history": history})
 
                         sent += 1
                         batch_count += 1
