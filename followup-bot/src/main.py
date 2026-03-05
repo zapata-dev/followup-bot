@@ -29,7 +29,7 @@ from pydantic_settings import BaseSettings
 from src.memory_store import MemoryStore
 from src.monday_service import monday_followup
 from src.sender_service import sender, is_office_hours, get_mexico_now
-from src.conversation_logic import handle_reply, detect_stop, detect_campaign_type
+from src.conversation_logic import handle_reply, detect_stop, detect_campaign_type, generate_conversation_resumen
 from src.phone_utils import normalize_phone
 from src.dashboard import DASHBOARD_HTML
 
@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     EVO_INSTANCE: str = "Seguimiento"
 
     # Bot identity (used in prompts and templates)
-    BOT_NAME: str = "Tu asesor"
+    BOT_NAME: str = "Estefania Fernandez"
     COMPANY_NAME: str = "La empresa"
     COMPANY_LOCATION: str = "la sucursal"
     COMPANY_PRODUCT: str = "vehículos"
@@ -327,6 +327,13 @@ async def _process_webhook(body: dict):
     contact = await monday_followup.find_by_phone(phone)
     unknown_contact = False
 
+    if contact:
+        logger.info(
+            f"🔍 Found contact in Monday: item_id={contact['item_id']}, "
+            f"name={contact.get('name', 'N/A')}, status={contact.get('status', 'N/A')}, "
+            f"group={contact.get('group_title', 'N/A')}"
+        )
+
     if not contact:
         if not settings.REPLY_TO_UNKNOWN_CONTACTS:
             logger.info(f"🔍 Phone {phone[:6]}*** not found in Monday board, ignoring")
@@ -405,14 +412,37 @@ async def _process_webhook(body: dict):
         logger.info(f"📝 Unknown contact reply sent: action={action}")
         return
 
-    # Update Monday based on action
+    # Generate AI conversation summary for Monday resumen column
+    resumen = ""
+    try:
+        resumen = await generate_conversation_resumen(
+            conversation_history=history,
+            user_text=text,
+            bot_reply=reply_text,
+            contact_data={
+                "name": contact.get("name", ""),
+                "vehicle": contact.get("vehicle", ""),
+            },
+            previous_resumen=contact.get("resumen", ""),
+        )
+        logger.info(f"📝 Resumen generated for {phone[:6]}***: {resumen[:80]}...")
+    except Exception as e:
+        logger.error(f"❌ Resumen generation failed: {e}")
+
+    # Update Monday based on action — ALWAYS update all fields + add note
     if action == "stop":
-        await monday_followup.update_reply(contact["item_id"], "STOP", summary)
-        await monday_followup.add_note(contact["item_id"], f"🛑 {summary}")
+        await monday_followup.update_reply(contact["item_id"], "STOP", summary, resumen=resumen)
+        await monday_followup.add_note(
+            contact["item_id"],
+            f"🛑 {summary}\n\nResumen: {resumen}" if resumen else f"🛑 {summary}",
+        )
 
     elif action == "handoff":
-        await monday_followup.update_reply(contact["item_id"], "Handoff", summary)
-        await monday_followup.add_note(contact["item_id"], f"🤝 {summary}")
+        await monday_followup.update_reply(contact["item_id"], "Handoff", summary, resumen=resumen)
+        await monday_followup.add_note(
+            contact["item_id"],
+            f"🤝 {summary}\n\nResumen: {resumen}" if resumen else f"🤝 {summary}",
+        )
         # Silence bot for this user
         state.silenced_users[phone] = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
         # Alert owner
@@ -421,15 +451,23 @@ async def _process_webhook(body: dict):
             await _send_reply(settings.OWNER_PHONE, alert)
 
     elif action == "interested":
-        await monday_followup.update_reply(contact["item_id"], "Interesado", summary)
-        await monday_followup.add_note(contact["item_id"], f"🟢 {summary}")
+        await monday_followup.update_reply(contact["item_id"], "Interesado", summary, resumen=resumen)
+        await monday_followup.add_note(
+            contact["item_id"],
+            f"🟢 {summary}\n\nResumen: {resumen}" if resumen else f"🟢 {summary}",
+        )
         # Also alert owner for hot leads
         if settings.OWNER_PHONE:
             alert = f"🟢 LEAD INTERESADO en seguimiento:\n{contact['name']}\nVehículo: {contact.get('vehicle', 'N/A')}\nDijo: {text[:200]}"
             await _send_reply(settings.OWNER_PHONE, alert)
 
     else:  # continue
-        await monday_followup.update_reply(contact["item_id"], "Respondió", summary)
+        await monday_followup.update_reply(contact["item_id"], "Respondió", summary, resumen=resumen)
+        # ALWAYS add note on every reply, not just special actions
+        await monday_followup.add_note(
+            contact["item_id"],
+            f"💬 Cliente: {text[:200]}\n\nBot: {reply_text[:200]}\n\nResumen: {resumen}" if resumen else f"💬 {summary}",
+        )
 
 
 async def _send_reply(phone: str, text: str, slow: bool = False):
