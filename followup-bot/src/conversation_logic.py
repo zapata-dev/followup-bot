@@ -157,7 +157,8 @@ REGLAS DE COMUNICACION (CRITICAS — sigue TODAS sin excepcion):
 6. SIEMPRE termina con UNA pregunta concreta. No preguntas abiertas tipo "en que puedo ayudarte?".
    Pregunta cosas especificas: "De cuantas toneladas?", "Para que ruta?", "Nuevo o seminuevo?"
 7. Si el cliente muestra CUALQUIER senal de compra (documentos, precios, disponibilidad,
-   citas, financiamiento, requisitos) — es lead CALIENTE. Facilita inmediatamente.
+   citas, visitas, financiamiento, requisitos) — es lead CALIENTE. Haz HANDOFF inmediatamente.
+   NO intentes facilitar tu misma. Transfiere al asesor.
 8. Si el cliente se queja, VALIDA primero ("Tienes razon, eso no debio pasar"),
    luego ofrece accion concreta. NO des disculpas genericas.
    Si la queja es seria (mal vendedor, estafa, mal trato), SIEMPRE transfiere
@@ -225,20 +226,30 @@ MENSAJES MULTIMEDIA (audio, foto, video, documento, sticker, ubicacion):
 - Si el mensaje incluye un texto/caption ademas del medio, responde al texto.
 
 REGLA DE ORO — HANDOFF (CRITICO — NUNCA LA VIOLES):
-- Tu trabajo es CALENTAR el lead, NO cerrar la venta ni agendar citas.
+- Tu trabajo es CALENTAR el lead, NO cerrar la venta ni agendar citas ni visitas.
 - NUNCA intentes agendar una cita, llamada o visita tu misma.
+- NUNCA confirmes una hora de visita. NUNCA digas "te espero a las X".
+- NUNCA digas "pasa a la oficina", "te espero en la sucursal" ni nada similar.
+  TU NO ESTAS EN NINGUNA OFICINA. Eres un bot, no puedes recibir a nadie.
+- NUNCA des direcciones ni nombres de sucursales. Hay varias y NO sabes en cual
+  esta la unidad que el cliente busca.
+- NUNCA inventes horarios de citas (ej: "a las 5:30 PM", "manana a las 10").
   NO digas: "Que dia y hora te funciona?", "Agendamos una llamada?",
-  "Te espero el martes a las 10am", "Ven a vernos el jueves".
-- Cuando el cliente quiera agendar, cotizar formalmente, cerrar compra, o pida
-  hablar con alguien, HAZ HANDOFF con una transicion natural:
-  "Para que te den la mejor atencion, voy a pedirle a uno de nuestros asesores
-  especializados que te contacte. En que horario te viene mejor que se comunique contigo?"
-- Si el cliente pregunta donde ir a ver unidades, NO des la direccion y ya. Transfiere:
-  "Tenemos varias opciones. Para que no des la vuelta en vano, le pido a un asesor
-  que te confirme donde esta la unidad que te interesa y coordine tu visita."
-- Si el cliente se queja de un vendedor o tiene miedo de estafa, transfiere autoridad:
-  "Te ofrezco una disculpa por esa experiencia. Voy a pedirle a nuestro gerente de ventas
-  que te llame personalmente para darte toda la tranquilidad."
+  "Te espero el martes a las 10am", "Ven a vernos el jueves",
+  "Lo retomamos esta semana o la proxima?" (esto es agendar disfrazado).
+
+CUANDO TRANSFERIR (handoff):
+- Cuando el cliente quiere IR A VER la unidad o VISITAR la sucursal.
+- Cuando el cliente quiere agendar una cita o una llamada.
+- Cuando el cliente quiere cotizar formalmente o cerrar compra.
+- Cuando el cliente pide hablar con alguien o que lo llamen.
+- Cuando el cliente dice cualquier cosa POSITIVA hacia la compra.
+- Cuando se queja de un vendedor o tiene miedo de estafa.
+
+COMO TRANSFERIR (usa variaciones naturales, no siempre la misma frase):
+- "Que buena noticia! Le pido a un asesor que te contacte para coordinar todo. En que horario te viene mejor?"
+- "Excelente! Para que te atiendan como se debe, un asesor te va a llamar. Que horario te queda bien?"
+- "Perfecto! Voy a pedirle a uno de nuestros asesores que se ponga en contacto contigo para que te de todos los detalles."
 
 HORARIO DE ATENCION (referencia, NO para que TU agendes):
 - Lunes a Viernes: 9:00 AM a 6:00 PM
@@ -432,10 +443,15 @@ INTEREST_PHRASES = {
     "documentos", "requisitos", "papeles", "qué necesito para comprar",
     "que necesito para comprar", "como le hago para comprar",
     "quiero comprar", "listo para comprar", "vamos a cerrar",
-    # Visit / availability
+    # Visit / availability (CRITICAL — client wants to go see the vehicle)
     "quiero verlo", "puedo ir", "dónde están", "donde estan",
     "tienen disponible", "aún lo tienen", "aun lo tienen",
     "quiero ir a verlo", "puedo visitarlos", "horarios",
+    "pendiente de ir", "quiero ir", "se puede hoy",
+    "puedo ir hoy", "voy para alla", "voy para allá",
+    "ya llegue", "ya llegué", "ya estoy aqui", "ya estoy aquí",
+    "cuando puedo ir", "cuándo puedo ir", "a que hora puedo ir",
+    "hoy de una vez", "lo retomamos", "retomar",
     # Info request
     "envíame información", "enviame informacion", "ficha técnica",
     "ficha tecnica", "quiero más información", "quiero mas informacion",
@@ -612,6 +628,27 @@ async def handle_reply(
     if any(w in reply_lower for w in handoff_hints):
         if action == "continue":
             action = "handoff"
+
+    # 6b. CRITICAL: Detect if bot is scheduling/confirming visits (FORBIDDEN)
+    # If the bot confirms a time, says "te espero", gives an address, or says
+    # "pasa a la oficina", replace the reply with a proper handoff message.
+    scheduling_violations = [
+        "te espero", "te esperamos", "pasa a la oficina", "pasa a la sucursal",
+        "te parece bien a las", "nos vemos a las", "a las 5", "a las 6",
+        "a las 7", "a las 8", "a las 9", "a las 10", "a las 11", "a las 12",
+        "a las 1", "a las 2", "a las 3", "a las 4",
+        "ven a las", "te veo a las", "aqui te espero", "aquí te espero",
+        "ya te estoy esperando",
+    ]
+    if any(v in reply_lower for v in scheduling_violations):
+        client_name = contact_data.get("name", "").split("|")[0].strip()
+        name_part = f" {client_name}" if client_name else ""
+        reply = (
+            f"Que buena noticia{name_part}! Para que te atiendan como se debe, "
+            f"le pido a uno de nuestros asesores que te contacte ahorita mismo "
+            f"y coordine todo contigo. En que horario te viene mejor?"
+        )
+        action = "handoff"
 
     # 7. Generate brief summary
     summary = _summarize_exchange(user_text, reply, action)
