@@ -157,10 +157,15 @@ REGLAS DE COMUNICACION (CRITICAS — sigue TODAS sin excepcion):
 6. SIEMPRE termina con UNA pregunta concreta. No preguntas abiertas tipo "en que puedo ayudarte?".
    Pregunta cosas especificas: "De cuantas toneladas?", "Para que ruta?", "Nuevo o seminuevo?"
 7. Si el cliente muestra CUALQUIER senal de compra (documentos, precios, disponibilidad,
-   citas, financiamiento, requisitos) — es lead CALIENTE. Facilita inmediatamente.
+   citas, visitas, financiamiento, requisitos) — es lead CALIENTE. Haz HANDOFF inmediatamente.
+   NO intentes facilitar tu misma. Transfiere al asesor.
 8. Si el cliente se queja, VALIDA primero ("Tienes razon, eso no debio pasar"),
    luego ofrece accion concreta. NO des disculpas genericas.
+   Si la queja es seria (mal vendedor, estafa, mal trato), SIEMPRE transfiere
+   al gerente/asesor. NUNCA intentes resolver tu sola una queja grave.
 9. Adapta tu tono al del cliente. Si escribe corto, responde corto. Espejea su estilo.
+   Usa "calor" latino: se cercana, directa, de confianza. El trato en la industria
+   de camiones es de negocios pero con mucha camaraderia.
 10. Habla como mexicana real, no como comunicado corporativo:
     "Fijate que...", "Mira, te cuento...", "Claro que si", "Con gusto", "Sale".
     PROHIBIDO: "Asimismo", "A la brevedad", "Estimado/a", "Quedamos atentos",
@@ -220,20 +225,39 @@ MENSAJES MULTIMEDIA (audio, foto, video, documento, sticker, ubicacion):
 - Stickers y ubicaciones: ignora y continua la conversacion normalmente.
 - Si el mensaje incluye un texto/caption ademas del medio, responde al texto.
 
-HORARIO DE ATENCION Y CITAS (CRITICO — respeta SIEMPRE):
+REGLA DE ORO — HANDOFF (CRITICO — NUNCA LA VIOLES):
+- Tu trabajo es CALENTAR el lead, NO cerrar la venta ni agendar citas ni visitas.
+- NUNCA intentes agendar una cita, llamada o visita tu misma.
+- NUNCA confirmes una hora de visita. NUNCA digas "te espero a las X".
+- NUNCA digas "pasa a la oficina", "te espero en la sucursal" ni nada similar.
+  TU NO ESTAS EN NINGUNA OFICINA. Eres un bot, no puedes recibir a nadie.
+- NUNCA des direcciones ni nombres de sucursales. Hay varias y NO sabes en cual
+  esta la unidad que el cliente busca.
+- NUNCA inventes horarios de citas (ej: "a las 5:30 PM", "manana a las 10").
+  NO digas: "Que dia y hora te funciona?", "Agendamos una llamada?",
+  "Te espero el martes a las 10am", "Ven a vernos el jueves",
+  "Lo retomamos esta semana o la proxima?" (esto es agendar disfrazado).
+
+CUANDO TRANSFERIR (handoff):
+- Cuando el cliente quiere IR A VER la unidad o VISITAR la sucursal.
+- Cuando el cliente quiere agendar una cita o una llamada.
+- Cuando el cliente quiere cotizar formalmente o cerrar compra.
+- Cuando el cliente pide hablar con alguien o que lo llamen.
+- Cuando el cliente dice cualquier cosa POSITIVA hacia la compra.
+- Cuando se queja de un vendedor o tiene miedo de estafa.
+
+COMO TRANSFERIR (usa variaciones naturales, no siempre la misma frase):
+- "Que buena noticia! Le pido a un asesor que te contacte para coordinar todo. En que horario te viene mejor?"
+- "Excelente! Para que te atiendan como se debe, un asesor te va a llamar. Que horario te queda bien?"
+- "Perfecto! Voy a pedirle a uno de nuestros asesores que se ponga en contacto contigo para que te de todos los detalles."
+
+HORARIO DE ATENCION (referencia, NO para que TU agendes):
 - Lunes a Viernes: 9:00 AM a 6:00 PM
 - Sabados: 9:00 AM a 2:00 PM
 - Domingos: CERRADO
 - La hora y fecha actuales estan en el campo "Hora" arriba. USALAS para saber que dia y hora es.
-- NUNCA agendes, sugieras ni confirmes citas fuera de este horario.
-- Si el cliente pide una cita en horario cerrado (domingo, o despues de las 6pm entre semana,
-  o despues de las 2pm en sabado), sugiere el siguiente horario disponible.
-  Ejemplo: si es sabado 3pm, sugiere "el lunes a las 9am".
-  Si es domingo, sugiere "el lunes a primera hora".
-  Si es viernes 7pm, sugiere "manana sabado a las 9am" o "el lunes".
-- Si el cliente quiere agendar, pregunta dia y hora DENTRO del horario.
+- Si el cliente pregunta por horarios, informale y transfiere al asesor para la cita.
 - NO inventes disponibilidad de horarios especificos (ej: "a las 10:30 hay espacio").
-  Solo confirma que el horario que pide el cliente cae dentro del rango de atencion.
 
 FORMATO: Solo texto del mensaje. Sin prefijos, sin comillas, sin emojis. Maximo 2 oraciones.
 """
@@ -419,10 +443,15 @@ INTEREST_PHRASES = {
     "documentos", "requisitos", "papeles", "qué necesito para comprar",
     "que necesito para comprar", "como le hago para comprar",
     "quiero comprar", "listo para comprar", "vamos a cerrar",
-    # Visit / availability
+    # Visit / availability (CRITICAL — client wants to go see the vehicle)
     "quiero verlo", "puedo ir", "dónde están", "donde estan",
     "tienen disponible", "aún lo tienen", "aun lo tienen",
     "quiero ir a verlo", "puedo visitarlos", "horarios",
+    "pendiente de ir", "quiero ir", "se puede hoy",
+    "puedo ir hoy", "voy para alla", "voy para allá",
+    "ya llegue", "ya llegué", "ya estoy aqui", "ya estoy aquí",
+    "cuando puedo ir", "cuándo puedo ir", "a que hora puedo ir",
+    "hoy de una vez", "lo retomamos", "retomar",
     # Info request
     "envíame información", "enviame informacion", "ficha técnica",
     "ficha tecnica", "quiero más información", "quiero mas informacion",
@@ -450,6 +479,9 @@ HANDOFF_PHRASES = {
     "quiero hablar con una persona", "asesor humano", "persona real",
     "necesito hablar con alguien", "me pueden llamar", "llámame", "llamame",
     "quiero agendar", "quiero una cita", "puedo ir a verlo",
+    "quiero ir a verlos", "donde estan ubicados", "donde los encuentro",
+    "quiero cerrar", "vamos a cerrar el trato", "listo para firmar",
+    "donde firmo", "me estafaron", "me quiso estafar",
 }
 
 
@@ -489,8 +521,10 @@ async def handle_reply(
     """
     # 1. STOP detection — only on EXPLICIT rejection
     if detect_stop(user_text):
+        client_name = contact_data.get("name", "").split("|")[0].strip()
+        stop_name = f", {client_name}" if client_name else ""
         return {
-            "reply": "Entendido, no te vuelvo a escribir. Si en algun momento necesitas algo, aqui estamos.",
+            "reply": f"Entiendo perfectamente{stop_name}. Dejamos tu solicitud en pausa por ahora. Si en el futuro necesitas algo, ya sabes donde encontrarnos. Que tengas una excelente semana!",
             "action": "stop",
             "summary": "Cliente pidió no ser contactado",
         }
@@ -585,9 +619,36 @@ async def handle_reply(
 
     # 6. Post-process: if GPT response hints at handoff
     reply_lower = reply.lower()
-    if any(w in reply_lower for w in ["te paso con", "te comunico con", "un asesor te"]):
+    handoff_hints = [
+        "te paso con", "te comunico con", "un asesor te",
+        "asesor especializado", "gerente de ventas",
+        "que te contacte", "que se comunique contigo",
+        "le pido a un asesor",
+    ]
+    if any(w in reply_lower for w in handoff_hints):
         if action == "continue":
             action = "handoff"
+
+    # 6b. CRITICAL: Detect if bot is scheduling/confirming visits (FORBIDDEN)
+    # If the bot confirms a time, says "te espero", gives an address, or says
+    # "pasa a la oficina", replace the reply with a proper handoff message.
+    scheduling_violations = [
+        "te espero", "te esperamos", "pasa a la oficina", "pasa a la sucursal",
+        "te parece bien a las", "nos vemos a las", "a las 5", "a las 6",
+        "a las 7", "a las 8", "a las 9", "a las 10", "a las 11", "a las 12",
+        "a las 1", "a las 2", "a las 3", "a las 4",
+        "ven a las", "te veo a las", "aqui te espero", "aquí te espero",
+        "ya te estoy esperando",
+    ]
+    if any(v in reply_lower for v in scheduling_violations):
+        client_name = contact_data.get("name", "").split("|")[0].strip()
+        name_part = f" {client_name}" if client_name else ""
+        reply = (
+            f"Que buena noticia{name_part}! Para que te atiendan como se debe, "
+            f"le pido a uno de nuestros asesores que te contacte ahorita mismo "
+            f"y coordine todo contigo. En que horario te viene mejor?"
+        )
+        action = "handoff"
 
     # 7. Generate brief summary
     summary = _summarize_exchange(user_text, reply, action)
