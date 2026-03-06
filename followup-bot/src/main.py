@@ -32,6 +32,7 @@ from src.sender_service import sender, is_office_hours, get_mexico_now
 from src.conversation_logic import handle_reply, detect_stop, detect_campaign_type, generate_conversation_resumen
 from src.phone_utils import normalize_phone
 from src.dashboard import DASHBOARD_HTML
+from src.media_processor import process_media_message
 
 # ============================================================
 # BOT / AUTO-RESPONDER DETECTION
@@ -315,40 +316,72 @@ async def _process_webhook(body: dict):
         or ""
     ).strip()
 
-    # Detect media messages and build a text placeholder so the bot can respond
+    # Detect media messages: try Gemini multimodal first, fall back to placeholder
     media_type = None
     if not text:
-        if "audioMessage" in msg_content:
-            media_type = "audio"
-            text = "[El cliente envió un mensaje de voz]"
-        elif "imageMessage" in msg_content:
-            media_type = "imagen"
-            caption = msg_content["imageMessage"].get("caption", "").strip()
-            text = f"[El cliente envió una foto]{': ' + caption if caption else ''}"
-        elif "videoMessage" in msg_content:
-            media_type = "video"
-            caption = msg_content["videoMessage"].get("caption", "").strip()
-            text = f"[El cliente envió un video]{': ' + caption if caption else ''}"
-        elif "documentMessage" in msg_content:
-            media_type = "documento"
-            filename = msg_content["documentMessage"].get("fileName", "").strip()
-            text = f"[El cliente envió un documento]{': ' + filename if filename else ''}"
-        elif "stickerMessage" in msg_content:
-            media_type = "sticker"
-            text = "[El cliente envió un sticker]"
-        elif "contactMessage" in msg_content:
-            media_type = "contacto"
-            display = msg_content["contactMessage"].get("displayName", "").strip()
-            text = f"[El cliente compartió un contacto]{': ' + display if display else ''}"
-        elif "locationMessage" in msg_content:
-            media_type = "ubicacion"
-            text = "[El cliente compartió su ubicación]"
-        else:
-            logger.info(f"📎 Unsupported message type from {phone[:6]}***, skipping")
-            return
+        # Try to process audio/image/video with Gemini multimodal
+        if any(k in msg_content for k in ("audioMessage", "imageMessage", "videoMessage")):
+            try:
+                media_result = await process_media_message(
+                    msg_content=msg_content,
+                    message_obj=message,
+                    evolution_url=settings.EVOLUTION_API_URL,
+                    api_key=settings.EVOLUTION_API_KEY,
+                    instance=settings.EVO_INSTANCE,
+                )
+            except Exception as e:
+                logger.error(f"❌ Media processing error: {e}")
+                media_result = None
 
-    if media_type:
-        logger.info(f"📎 Media message ({media_type}) from {phone[:6]}***: {text}")
+            if media_result:
+                media_type = media_result["type"]
+                processed_text = media_result["text"]
+                # Build context so the AI knows what was sent
+                if media_type == "audio":
+                    text = f"[Mensaje de voz transcrito: \"{processed_text}\"]"
+                elif media_type == "imagen":
+                    caption = msg_content.get("imageMessage", {}).get("caption", "").strip()
+                    text = f"[Foto del cliente — contenido: {processed_text}]"
+                    if caption:
+                        text += f" Texto del cliente: {caption}"
+                elif media_type == "video":
+                    caption = msg_content.get("videoMessage", {}).get("caption", "").strip()
+                    text = f"[Video del cliente — contenido: {processed_text}]"
+                    if caption:
+                        text += f" Texto del cliente: {caption}"
+                logger.info(f"🧠 Media processed ({media_type}) from {phone[:6]}***: {text[:120]}")
+
+        # Fallback placeholders for media that Gemini can't process or other types
+        if not text:
+            if "audioMessage" in msg_content:
+                media_type = "audio"
+                text = "[El cliente envió un mensaje de voz]"
+            elif "imageMessage" in msg_content:
+                media_type = "imagen"
+                caption = msg_content["imageMessage"].get("caption", "").strip()
+                text = f"[El cliente envió una foto]{': ' + caption if caption else ''}"
+            elif "videoMessage" in msg_content:
+                media_type = "video"
+                caption = msg_content["videoMessage"].get("caption", "").strip()
+                text = f"[El cliente envió un video]{': ' + caption if caption else ''}"
+            elif "documentMessage" in msg_content:
+                media_type = "documento"
+                filename = msg_content["documentMessage"].get("fileName", "").strip()
+                text = f"[El cliente envió un documento]{': ' + filename if filename else ''}"
+            elif "stickerMessage" in msg_content:
+                media_type = "sticker"
+                text = "[El cliente envió un sticker]"
+            elif "contactMessage" in msg_content:
+                media_type = "contacto"
+                display = msg_content["contactMessage"].get("displayName", "").strip()
+                text = f"[El cliente compartió un contacto]{': ' + display if display else ''}"
+            elif "locationMessage" in msg_content:
+                media_type = "ubicacion"
+                text = "[El cliente compartió su ubicación]"
+            else:
+                logger.info(f"📎 Unsupported message type from {phone[:6]}***, skipping")
+                return
+            logger.info(f"📎 Media fallback ({media_type}) from {phone[:6]}***: {text}")
 
     # Filter out auto-responders from other businesses/bots
     if _is_auto_responder(text):
