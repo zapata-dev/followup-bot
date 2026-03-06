@@ -307,7 +307,7 @@ async def _process_webhook(body: dict):
     if not phone:
         return
 
-    # Extract text
+    # Extract text and detect media type
     msg_content = message.get("message", {})
     text = (
         msg_content.get("conversation", "")
@@ -315,10 +315,40 @@ async def _process_webhook(body: dict):
         or ""
     ).strip()
 
+    # Detect media messages and build a text placeholder so the bot can respond
+    media_type = None
     if not text:
-        # Could be audio/image — for now, skip
-        logger.info(f"📎 Non-text message from {phone[:6]}***, skipping")
-        return
+        if "audioMessage" in msg_content:
+            media_type = "audio"
+            text = "[El cliente envió un mensaje de voz]"
+        elif "imageMessage" in msg_content:
+            media_type = "imagen"
+            caption = msg_content["imageMessage"].get("caption", "").strip()
+            text = f"[El cliente envió una foto]{': ' + caption if caption else ''}"
+        elif "videoMessage" in msg_content:
+            media_type = "video"
+            caption = msg_content["videoMessage"].get("caption", "").strip()
+            text = f"[El cliente envió un video]{': ' + caption if caption else ''}"
+        elif "documentMessage" in msg_content:
+            media_type = "documento"
+            filename = msg_content["documentMessage"].get("fileName", "").strip()
+            text = f"[El cliente envió un documento]{': ' + filename if filename else ''}"
+        elif "stickerMessage" in msg_content:
+            media_type = "sticker"
+            text = "[El cliente envió un sticker]"
+        elif "contactMessage" in msg_content:
+            media_type = "contacto"
+            display = msg_content["contactMessage"].get("displayName", "").strip()
+            text = f"[El cliente compartió un contacto]{': ' + display if display else ''}"
+        elif "locationMessage" in msg_content:
+            media_type = "ubicacion"
+            text = "[El cliente compartió su ubicación]"
+        else:
+            logger.info(f"📎 Unsupported message type from {phone[:6]}***, skipping")
+            return
+
+    if media_type:
+        logger.info(f"📎 Media message ({media_type}) from {phone[:6]}***: {text}")
 
     # Filter out auto-responders from other businesses/bots
     if _is_auto_responder(text):
