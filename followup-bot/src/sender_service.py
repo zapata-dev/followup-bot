@@ -403,7 +403,7 @@ class SenderService:
                     result = await self._send_whatsapp(phone, message, http_client)
 
                     if result["success"]:
-                        await monday_followup.update_send_date(contact["item_id"])
+                        await monday_followup.update_send_date(contact["item_id"], normalized_phone=phone)
 
                         if memory_store:
                             await memory_store.log_send(

@@ -267,11 +267,24 @@ class MondayFollowupService:
     # ──────────────────────────────────────────────────────────
     # SEARCH: Find contact by phone (for webhook replies)
     # ──────────────────────────────────────────────────────────
-    async def find_by_phone(self, phone_clean: str) -> Optional[Dict]:
+    def _phone_variants(self, phone_clean: str) -> list:
         """
-        Find a contact item by phone (dedupe column).
-        Returns dict with item_id, name, status, vehicle, notes, group info.
+        Generate all possible formats a phone might be stored as in Monday.
+        Input: '5213131073749' (normalized 13 digits)
+        Output: ['5213131073749', '3131073749', '523131073749', '13131073749',
+                 '+5213131073749', '+52 1 313 107 3749']
         """
+        variants = [phone_clean]
+        if len(phone_clean) == 13 and phone_clean.startswith("521"):
+            ten = phone_clean[3:]          # 3131073749
+            twelve = "52" + ten            # 523131073749
+            eleven = "1" + ten             # 13131073749
+            plus_full = "+" + phone_clean  # +5213131073749
+            variants.extend([ten, twelve, eleven, plus_full])
+        return variants
+
+    async def _search_phone_in_column(self, col_id: str, value: str) -> Optional[dict]:
+        """Search a single phone value in a column. Returns first item or None."""
         query = """
         query ($board_id: ID!, $col_id: String!, $value: String!) {
             items_page_by_column_values(
@@ -294,28 +307,46 @@ class MondayFollowupService:
         """
         data = await self._graphql(query, {
             "board_id": int(self.board_id),
-            "col_id": self.dedupe_col_id,
-            "value": phone_clean,
+            "col_id": col_id,
+            "value": value,
         })
-
         items = data.get("data", {}).get("items_page_by_column_values", {}).get("items", [])
-        if not items:
-            return None
+        return items[0] if items else None
 
-        item = items[0]
-        col_map = {cv["id"]: cv.get("text", "") for cv in item.get("column_values", [])}
+    async def find_by_phone(self, phone_clean: str) -> Optional[Dict]:
+        """
+        Find a contact item by phone. Tries multiple phone formats
+        in both dedupe and phone columns to handle format mismatches.
+        Returns dict with item_id, name, status, vehicle, notes, group info.
+        """
+        variants = self._phone_variants(phone_clean)
 
-        return {
-            "item_id": item["id"],
-            "name": item.get("name", ""),
-            "status": col_map.get(self.status_col_id, ""),
-            "phone": col_map.get(self.dedupe_col_id, ""),
-            "vehicle": col_map.get(self.vehicle_col_id, ""),
-            "notes": col_map.get(self.notes_col_id, ""),
-            "resumen": col_map.get(self.resumen_col_id, ""),
-            "group_id": item.get("group", {}).get("id", ""),
-            "group_title": item.get("group", {}).get("title", ""),
-        }
+        # Try dedupe column first (primary), then phone column (fallback)
+        columns_to_search = [self.dedupe_col_id]
+        if self.phone_col_id and self.phone_col_id != self.dedupe_col_id:
+            columns_to_search.append(self.phone_col_id)
+
+        for col_id in columns_to_search:
+            for variant in variants:
+                item = await self._search_phone_in_column(col_id, variant)
+                if item:
+                    if variant != phone_clean:
+                        logger.info(f"🔍 Found contact with variant format: '{variant}' (normalized: {phone_clean})")
+                    col_map = {cv["id"]: cv.get("text", "") for cv in item.get("column_values", [])}
+                    return {
+                        "item_id": item["id"],
+                        "name": item.get("name", ""),
+                        "status": col_map.get(self.status_col_id, ""),
+                        "phone": col_map.get(self.dedupe_col_id, ""),
+                        "vehicle": col_map.get(self.vehicle_col_id, ""),
+                        "notes": col_map.get(self.notes_col_id, ""),
+                        "resumen": col_map.get(self.resumen_col_id, ""),
+                        "group_id": item.get("group", {}).get("id", ""),
+                        "group_title": item.get("group", {}).get("title", ""),
+                    }
+
+        logger.warning(f"⚠️ Phone {phone_clean[:6]}*** not found in Monday (tried {len(variants)} variants in {len(columns_to_search)} columns)")
+        return None
 
     # ──────────────────────────────────────────────────────────
     # UPDATE: Change status of a contact
@@ -323,17 +354,13 @@ class MondayFollowupService:
     async def update_status(self, item_id: str, new_status: str, extra_cols: Dict = None):
         """
         Update status label and optionally other columns.
-        Strategy: update status FIRST (critical), then extra columns separately.
-        If extra columns fail, status still gets updated.
+        Strategy: try ALL columns together first (1 API call).
+        If that fails, fall back to status-only + extra separately.
         """
         if not item_id:
             logger.warning("⚠️ update_status called with no item_id, skipping")
             return
 
-        # STEP 1: Always update status (critical — this must succeed)
-        status_vals = {
-            self.status_col_id: {"label": new_status}
-        }
         query = """
         mutation ($item_id: ID!, $board_id: ID!, $vals: JSON!) {
             change_multiple_column_values(
@@ -344,50 +371,74 @@ class MondayFollowupService:
             ) { id }
         }
         """
-        logger.info(f"📝 Updating item {item_id} status → {new_status}")
+
+        # Try all columns at once first (fewer API calls = less rate limiting)
+        all_vals = {self.status_col_id: {"label": new_status}}
+        if extra_cols:
+            all_vals.update(extra_cols)
+
+        logger.info(f"📝 Updating item {item_id}: status → {new_status}, cols: {list(all_vals.keys())}")
+        result = await self._graphql(query, {
+            "item_id": int(item_id),
+            "board_id": int(self.board_id),
+            "vals": json.dumps(all_vals),
+        })
+
+        if result.get("data", {}).get("change_multiple_column_values", {}).get("id"):
+            logger.info(f"✅ Monday updated: item {item_id} → {new_status} + {len(all_vals) - 1} extra cols")
+            return
+
+        # Combined update failed — fall back to status only + extra separately
+        logger.warning(f"⚠️ Combined update failed for item {item_id}, trying status-only fallback...")
+
+        # STEP 1: Status only
+        status_vals = {self.status_col_id: {"label": new_status}}
         result = await self._graphql(query, {
             "item_id": int(item_id),
             "board_id": int(self.board_id),
             "vals": json.dumps(status_vals),
         })
-
-        # Check if status update succeeded
         if result.get("data", {}).get("change_multiple_column_values", {}).get("id"):
-            logger.info(f"✅ Status updated: item {item_id} → {new_status}")
+            logger.info(f"✅ Status-only updated: item {item_id} → {new_status}")
         else:
-            logger.error(f"❌ Status update FAILED for item {item_id} → {new_status}. Response: {json.dumps(result)[:500]}")
+            logger.error(f"❌ Status update FAILED for item {item_id}. Response: {json.dumps(result)[:500]}")
 
-        # STEP 2: Update extra columns separately (so a bad column doesn't block status)
+        # STEP 2: Extra columns one by one (to identify which column is broken)
         if extra_cols:
-            logger.info(f"📝 Updating {len(extra_cols)} extra columns for item {item_id}: {list(extra_cols.keys())}")
-            try:
-                extra_result = await self._graphql(query, {
-                    "item_id": int(item_id),
-                    "board_id": int(self.board_id),
-                    "vals": json.dumps(extra_cols),
-                })
-                if extra_result.get("data", {}).get("change_multiple_column_values", {}).get("id"):
-                    logger.info(f"✅ Extra columns updated for item {item_id}")
-                else:
-                    logger.error(
-                        f"❌ Extra columns update FAILED for item {item_id}. "
-                        f"Columns: {list(extra_cols.keys())}. "
-                        f"Response: {json.dumps(extra_result)[:500]}"
-                    )
-            except Exception as e:
-                logger.error(f"❌ Extra columns update crashed for item {item_id}: {e}")
+            for col_id, col_val in extra_cols.items():
+                try:
+                    col_result = await self._graphql(query, {
+                        "item_id": int(item_id),
+                        "board_id": int(self.board_id),
+                        "vals": json.dumps({col_id: col_val}),
+                    })
+                    if col_result.get("data", {}).get("change_multiple_column_values", {}).get("id"):
+                        logger.info(f"✅ Column {col_id} updated for item {item_id}")
+                    else:
+                        logger.error(
+                            f"❌ Column {col_id} FAILED for item {item_id}. "
+                            f"Value: {json.dumps(col_val)[:200]}. "
+                            f"Response: {json.dumps(col_result)[:300]}"
+                        )
+                except Exception as e:
+                    logger.error(f"❌ Column {col_id} crashed for item {item_id}: {e}")
 
-    async def update_send_date(self, item_id: str):
-        """Mark send date as today."""
+    async def update_send_date(self, item_id: str, normalized_phone: str = ""):
+        """Mark send date as today and save normalized phone to dedupe column."""
         try:
             tz = pytz.timezone("America/Mexico_City")
             today = datetime.now(tz).strftime("%Y-%m-%d")
         except Exception:
             today = datetime.now().strftime("%Y-%m-%d")
 
-        await self.update_status(item_id, "Enviado", {
-            self.send_date_col_id: {"date": today}
-        })
+        extra = {
+            self.send_date_col_id: {"date": today},
+        }
+        # Save normalized phone so find_by_phone always matches on reply
+        if normalized_phone and self.dedupe_col_id:
+            extra[self.dedupe_col_id] = normalized_phone
+
+        await self.update_status(item_id, "Enviado", extra)
 
     async def update_reply(
         self,

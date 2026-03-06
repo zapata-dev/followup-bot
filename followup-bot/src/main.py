@@ -509,44 +509,50 @@ async def _process_webhook(body: dict):
         logger.error(f"❌ Resumen generation failed: {e}")
 
     # Update Monday based on action — ALWAYS update all fields + add note
-    if action == "stop":
-        await monday_followup.update_reply(contact["item_id"], "STOP", summary, resumen=resumen)
-        await monday_followup.add_note(
-            contact["item_id"],
-            f"🛑 {summary}\n\nResumen: {resumen}" if resumen else f"🛑 {summary}",
-        )
+    item_id = contact["item_id"]
+    try:
+        if action == "stop":
+            await monday_followup.update_reply(item_id, "STOP", summary, resumen=resumen)
+            await monday_followup.add_note(
+                item_id,
+                f"🛑 {summary}\n\nResumen: {resumen}" if resumen else f"🛑 {summary}",
+            )
 
-    elif action == "handoff":
-        await monday_followup.update_reply(contact["item_id"], "Handoff", summary, resumen=resumen)
-        await monday_followup.add_note(
-            contact["item_id"],
-            f"🤝 {summary}\n\nResumen: {resumen}" if resumen else f"🤝 {summary}",
-        )
-        # Silence bot for this user
-        state.silenced_users[phone] = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
-        # Alert owner
-        if settings.OWNER_PHONE:
-            alert = f"🤝 HANDOFF en seguimiento:\n{contact['name']}\nTel: {phone}\nDijo: {text[:200]}"
-            await _send_reply(settings.OWNER_PHONE, alert)
+        elif action == "handoff":
+            await monday_followup.update_reply(item_id, "Handoff", summary, resumen=resumen)
+            await monday_followup.add_note(
+                item_id,
+                f"🤝 {summary}\n\nResumen: {resumen}" if resumen else f"🤝 {summary}",
+            )
+            # Silence bot for this user
+            state.silenced_users[phone] = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
+            # Alert owner
+            if settings.OWNER_PHONE:
+                alert = f"🤝 HANDOFF en seguimiento:\n{contact['name']}\nTel: {phone}\nDijo: {text[:200]}"
+                await _send_reply(settings.OWNER_PHONE, alert)
 
-    elif action == "interested":
-        await monday_followup.update_reply(contact["item_id"], "Interesado", summary, resumen=resumen)
-        await monday_followup.add_note(
-            contact["item_id"],
-            f"🟢 {summary}\n\nResumen: {resumen}" if resumen else f"🟢 {summary}",
-        )
-        # Also alert owner for hot leads
-        if settings.OWNER_PHONE:
-            alert = f"🟢 LEAD INTERESADO en seguimiento:\n{contact['name']}\nVehículo: {contact.get('vehicle', 'N/A')}\nDijo: {text[:200]}"
-            await _send_reply(settings.OWNER_PHONE, alert)
+        elif action == "interested":
+            await monday_followup.update_reply(item_id, "Interesado", summary, resumen=resumen)
+            await monday_followup.add_note(
+                item_id,
+                f"🟢 {summary}\n\nResumen: {resumen}" if resumen else f"🟢 {summary}",
+            )
+            # Also alert owner for hot leads
+            if settings.OWNER_PHONE:
+                alert = f"🟢 LEAD INTERESADO en seguimiento:\n{contact['name']}\nVehículo: {contact.get('vehicle', 'N/A')}\nDijo: {text[:200]}"
+                await _send_reply(settings.OWNER_PHONE, alert)
 
-    else:  # continue
-        await monday_followup.update_reply(contact["item_id"], "Respondió", summary, resumen=resumen)
-        # ALWAYS add note on every reply, not just special actions
-        await monday_followup.add_note(
-            contact["item_id"],
-            f"💬 Cliente: {text[:200]}\n\nBot: {reply_text[:200]}\n\nResumen: {resumen}" if resumen else f"💬 {summary}",
-        )
+        else:  # continue
+            await monday_followup.update_reply(item_id, "Respondió", summary, resumen=resumen)
+            # ALWAYS add note on every reply, not just special actions
+            await monday_followup.add_note(
+                item_id,
+                f"💬 Cliente: {text[:200]}\n\nBot: {reply_text[:200]}\n\nResumen: {resumen}" if resumen else f"💬 {summary}",
+            )
+
+        logger.info(f"✅ Monday updated for {phone[:6]}***: item={item_id}, action={action}")
+    except Exception as e:
+        logger.error(f"❌ Monday update FAILED for {phone[:6]}***: item={item_id}, action={action}, error={e}")
 
 
 async def _send_reply(phone: str, text: str, slow: bool = False):
