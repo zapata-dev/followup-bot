@@ -188,7 +188,12 @@ async def lifespan(app: FastAPI):
     # SQLite
     state.memory = MemoryStore(settings.SQLITE_PATH)
     await state.memory.init()
-    logger.info("✅ SQLite initialized")
+    # Restore silenced users from DB (survive restarts)
+    state.silenced_users = await state.memory.load_silenced_users()
+    if state.silenced_users:
+        logger.info(f"✅ SQLite initialized — restored {len(state.silenced_users)} silenced users")
+    else:
+        logger.info("✅ SQLite initialized")
     
     # LLM smoke test — Gemini primary, OpenAI fallback
     from src.conversation_logic import gemini_client, _GEMINI_MODEL, openai_client, FALLBACK_MODEL
@@ -477,6 +482,9 @@ async def _process_webhook(body: dict):
             return
         else:
             del state.silenced_users[phone]
+            # Clean up expired entry from SQLite
+            if state.memory:
+                await state.memory.unsilence_user(phone)
 
     # ── Buffer message for accumulation ──
     # If the client sends multiple messages quickly (e.g. "Hola" then "Bien"),
@@ -744,7 +752,10 @@ async def _process_reply(phone: str, text: str):
 
     # Actions that need immediate side effects (not queued)
     if action == "handoff":
-        state.silenced_users[phone] = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
+        silence_until = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
+        state.silenced_users[phone] = silence_until
+        # Persist to SQLite so handoff survives restarts
+        await state.memory.silence_user(phone, silence_until, reason="handoff")
         if settings.OWNER_PHONE:
             alert = f"🤝 HANDOFF en seguimiento:\n{contact['name']}\nTel: {phone}\nDijo: {text[:200]}"
             await _send_reply(settings.OWNER_PHONE, alert)
