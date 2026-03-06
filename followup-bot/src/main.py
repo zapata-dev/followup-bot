@@ -28,7 +28,8 @@ from pydantic_settings import BaseSettings
 
 from src.memory_store import MemoryStore
 from src.monday_service import monday_followup
-from src.sender_service import sender, is_office_hours, get_mexico_now
+from src.monday_queue import MondayQueue
+from src.sender_service import sender, is_office_hours, get_mexico_now, get_today_schedule
 from src.conversation_logic import handle_reply, detect_stop, detect_campaign_type, generate_conversation_resumen
 from src.phone_utils import normalize_phone
 from src.dashboard import DASHBOARD_HTML
@@ -93,6 +94,11 @@ class Settings(BaseSettings):
     # Reply to contacts not found in Monday (useful for testing)
     REPLY_TO_UNKNOWN_CONTACTS: bool = True
 
+    # Monday Queue
+    MONDAY_QUEUE_ENABLED: bool = True
+    MONDAY_CACHE_SYNC_MINUTES: int = 10
+    MONDAY_ORPHAN_GROUP_ID: str = ""  # Monday group ID for unknown contacts inbox
+
     # Off-hours schedule messages (set to empty "" to disable)
     OFF_HOURS_MSG_SUNDAY: str = "Nuestro horario de atencion es de lunes a viernes de 9am a 6pm y sabados de 9am a 2pm."
     OFF_HOURS_MSG_SATURDAY: str = "Nuestro horario sabatino es de 9am a 2pm. Te atendemos el lunes a primera hora."
@@ -152,11 +158,14 @@ class GlobalState:
     def __init__(self):
         self.http_client: Optional[httpx.AsyncClient] = None
         self.memory: Optional[MemoryStore] = None
+        self.monday_queue: Optional[MondayQueue] = None
         self.processed_ids = BoundedOrderedSet(4000)
         self.silenced_users: Dict[str, float] = {}  # phone → silenced_until_ts
         self.startup_time = time.time()
         # Message accumulation buffer: phone → {"texts": [...], "task": asyncio.Task}
         self.message_buffers: Dict[str, Dict] = {}
+        # Background tasks
+        self._cache_sync_task: Optional[asyncio.Task] = None
 
     @property
     def uptime_seconds(self) -> float:
@@ -208,7 +217,38 @@ async def lifespan(app: FastAPI):
         logger.info("✅ Monday.com configured")
     else:
         logger.warning("⚠️ Monday.com NOT configured — sender won't work")
-    
+
+    # Monday Queue (Outbox + Cache + DLQ)
+    if settings.MONDAY_QUEUE_ENABLED and monday_followup.is_configured():
+        state.monday_queue = MondayQueue(settings.SQLITE_PATH)
+        await state.monday_queue.init()
+
+        # Start background queue processor with DLQ alert callback
+        async def _dlq_alert(item):
+            """Alert owner when a Monday update permanently fails."""
+            if settings.OWNER_PHONE:
+                msg = (
+                    f"⚠️ ERROR CRITICO Monday:\n"
+                    f"Operación: {item['operation']}\n"
+                    f"Item: {item['item_id']}\n"
+                    f"Error: {item.get('error', 'desconocido')[:200]}\n"
+                    f"Reintentos: {item['retries']}\n"
+                    f"Revisa /admin/queue para más detalles."
+                )
+                await _send_reply(settings.OWNER_PHONE, msg)
+
+        state.monday_queue.start_processor(monday_followup, alert_callback=_dlq_alert)
+
+        # Initial cache sync
+        asyncio.create_task(_sync_contacts_cache())
+        # Periodic cache sync
+        state._cache_sync_task = asyncio.create_task(
+            _periodic_cache_sync(settings.MONDAY_CACHE_SYNC_MINUTES)
+        )
+        logger.info("✅ Monday Queue + Cache initialized")
+    else:
+        logger.info("ℹ️ Monday Queue disabled or Monday not configured")
+
     logger.info(f"✅ Evolution instance: {settings.EVO_INSTANCE}")
     logger.info(f"✅ Bot identity: {settings.BOT_NAME} @ {settings.COMPANY_NAME}")
     logger.info("🟢 Followup Bot ready!")
@@ -217,13 +257,42 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("🔴 Shutting down...")
+    if state.monday_queue:
+        await state.monday_queue.close()
     if state.memory:
         await state.memory.close()
     if state.http_client:
         await state.http_client.aclose()
+    if state._cache_sync_task:
+        state._cache_sync_task.cancel()
 
 
 app = FastAPI(title="Followup Bot", lifespan=lifespan)
+
+
+# ============================================================
+# CACHE SYNC
+# ============================================================
+async def _sync_contacts_cache():
+    """Sync Monday contacts to local SQLite cache."""
+    if not state.monday_queue or not monday_followup.is_configured():
+        return
+    try:
+        contacts = await monday_followup.get_all_contacts_for_cache()
+        await state.monday_queue.cache_contacts_bulk(contacts)
+        logger.info(f"✅ Cache synced: {len(contacts)} contacts")
+    except Exception as e:
+        logger.error(f"❌ Cache sync failed: {e}")
+
+
+async def _periodic_cache_sync(interval_minutes: int):
+    """Periodically sync Monday contacts to cache."""
+    while True:
+        await asyncio.sleep(interval_minutes * 60)
+        try:
+            await _sync_contacts_cache()
+        except Exception as e:
+            logger.error(f"❌ Periodic cache sync error: {e}")
 
 
 # ============================================================
@@ -231,6 +300,12 @@ app = FastAPI(title="Followup Bot", lifespan=lifespan)
 # ============================================================
 @app.get("/health")
 async def health():
+    queue_stats = None
+    if state.monday_queue:
+        try:
+            queue_stats = await state.monday_queue.get_queue_stats()
+        except Exception:
+            pass
     return {
         "status": "ok",
         "bot": "followup-bot",
@@ -240,6 +315,7 @@ async def health():
         "processed_messages": len(state.processed_ids),
         "sender": sender.get_status(),
         "monday_configured": monday_followup.is_configured(),
+        "monday_queue": queue_stats,
     }
 
 
@@ -465,23 +541,36 @@ async def _process_reply(phone: str, text: str):
     else:
         logger.info(f"📩 Processing reply from {phone[:6]}***: {text[:80]}")
 
-    # Look up contact in Monday
-    contact = await monday_followup.find_by_phone(phone)
+    # Look up contact: cache first (microseconds), then Monday API (seconds)
+    contact = None
     unknown_contact = False
 
-    if contact:
-        logger.info(
-            f"🔍 Found contact in Monday: item_id={contact['item_id']}, "
-            f"name={contact.get('name', 'N/A')}, status={contact.get('status', 'N/A')}, "
-            f"group={contact.get('group_title', 'N/A')}"
-        )
+    # Try local cache first (Propuesta 2)
+    if state.monday_queue:
+        contact = await state.monday_queue.get_cached_contact(phone)
+        if contact:
+            logger.info(
+                f"🔍 Found in CACHE ({contact.get('source', 'cache')}): "
+                f"item_id={contact['item_id']}, name={contact.get('name', 'N/A')}"
+            )
+
+    # Fall back to Monday API if not in cache
+    if not contact:
+        contact = await monday_followup.find_by_phone(phone)
+        if contact:
+            logger.info(
+                f"🔍 Found in Monday API: item_id={contact['item_id']}, "
+                f"name={contact.get('name', 'N/A')}, status={contact.get('status', 'N/A')}"
+            )
+            # Update cache with fresh data
+            if state.monday_queue:
+                await state.monday_queue.cache_contact(phone, contact)
 
     if not contact:
         if not settings.REPLY_TO_UNKNOWN_CONTACTS:
-            logger.info(f"🔍 Phone {phone[:6]}*** not found in Monday board, ignoring")
+            logger.info(f"🔍 Phone {phone[:6]}*** not found in Monday nor cache, ignoring")
             return
-        # Reply to unknown contacts (useful for testing)
-        logger.info(f"🔍 Phone {phone[:6]}*** not found in Monday board, replying anyway (REPLY_TO_UNKNOWN_CONTACTS=true)")
+        logger.info(f"🔍 Phone {phone[:6]}*** not found, replying anyway (REPLY_TO_UNKNOWN_CONTACTS=true)")
         contact = {
             "item_id": None,
             "name": "",
@@ -569,9 +658,23 @@ async def _process_reply(phone: str, text: str):
     # Save to SQLite
     await state.memory.upsert(phone, action, {"history": history})
 
-    # Skip Monday updates if contact was not found in Monday
+    # Handle unknown contacts — Propuesta 3: create orphan in Monday
     if unknown_contact:
-        logger.info(f"📝 Unknown contact reply sent: action={action}")
+        if state.monday_queue and settings.MONDAY_ORPHAN_GROUP_ID:
+            # Queue creation of orphan contact in Monday
+            await state.monday_queue.enqueue("", "create_item", {
+                "group_id": settings.MONDAY_ORPHAN_GROUP_ID,
+                "name": f"Lead Entrante - {phone}",
+                "column_values": {
+                    monday_followup.dedupe_col_id: phone,
+                    monday_followup.status_col_id: {"label": "Respondió"},
+                    monday_followup.reply_col_id: {"text": f"Cliente: {text[:500]}"},
+                    monday_followup.resumen_col_id: {"text": f"Contacto desconocido escribió: {text[:300]}. Bot respondió: {reply_text[:200]}"},
+                },
+            })
+            logger.info(f"📥 Orphan contact queued for Monday: {phone[:6]}***")
+        else:
+            logger.info(f"📝 Unknown contact reply sent: action={action}")
         return
 
     # Generate AI conversation summary for Monday resumen column
@@ -591,51 +694,64 @@ async def _process_reply(phone: str, text: str):
     except Exception as e:
         logger.error(f"❌ Resumen generation failed: {e}")
 
-    # Update Monday based on action — ALWAYS update all fields + add note
+    # Update Monday — via queue (Propuesta 1) or direct
     item_id = contact["item_id"]
-    try:
-        if action == "stop":
-            await monday_followup.update_reply(item_id, "STOP", summary, resumen=resumen)
-            await monday_followup.add_note(
-                item_id,
-                f"🛑 {summary}\n\nResumen: {resumen}" if resumen else f"🛑 {summary}",
-            )
+    queue = state.monday_queue
 
-        elif action == "handoff":
-            await monday_followup.update_reply(item_id, "Handoff", summary, resumen=resumen)
-            await monday_followup.add_note(
-                item_id,
-                f"🤝 {summary}\n\nResumen: {resumen}" if resumen else f"🤝 {summary}",
-            )
-            # Silence bot for this user
-            state.silenced_users[phone] = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
-            # Alert owner
-            if settings.OWNER_PHONE:
-                alert = f"🤝 HANDOFF en seguimiento:\n{contact['name']}\nTel: {phone}\nDijo: {text[:200]}"
-                await _send_reply(settings.OWNER_PHONE, alert)
+    # Map action → status label and note
+    status_map = {
+        "stop": "STOP",
+        "handoff": "Handoff",
+        "interested": "Interesado",
+        "continue": "Respondió",
+    }
+    new_status = status_map.get(action, "Respondió")
 
-        elif action == "interested":
-            await monday_followup.update_reply(item_id, "Interesado", summary, resumen=resumen)
-            await monday_followup.add_note(
-                item_id,
-                f"🟢 {summary}\n\nResumen: {resumen}" if resumen else f"🟢 {summary}",
-            )
-            # Also alert owner for hot leads
-            if settings.OWNER_PHONE:
-                alert = f"🟢 LEAD INTERESADO en seguimiento:\n{contact['name']}\nVehículo: {contact.get('vehicle', 'N/A')}\nDijo: {text[:200]}"
-                await _send_reply(settings.OWNER_PHONE, alert)
+    note_icons = {"stop": "🛑", "handoff": "🤝", "interested": "🟢", "continue": "💬"}
+    icon = note_icons.get(action, "💬")
 
-        else:  # continue
-            await monday_followup.update_reply(item_id, "Respondió", summary, resumen=resumen)
-            # ALWAYS add note on every reply, not just special actions
-            await monday_followup.add_note(
-                item_id,
-                f"💬 Cliente: {text[:200]}\n\nBot: {reply_text[:200]}\n\nResumen: {resumen}" if resumen else f"💬 {summary}",
-            )
+    if action == "continue":
+        note_body = f"{icon} Cliente: {text[:200]}\n\nBot: {reply_text[:200]}\n\nResumen: {resumen}" if resumen else f"{icon} {summary}"
+    else:
+        note_body = f"{icon} {summary}\n\nResumen: {resumen}" if resumen else f"{icon} {summary}"
 
-        logger.info(f"✅ Monday updated for {phone[:6]}***: item={item_id}, action={action}")
-    except Exception as e:
-        logger.error(f"❌ Monday update FAILED for {phone[:6]}***: item={item_id}, action={action}, error={e}")
+    if queue:
+        # Queue updates (guaranteed delivery even if Monday is down)
+        await queue.enqueue(item_id, "update_reply", {
+            "item_id": item_id,
+            "status": new_status,
+            "reply_summary": summary,
+            "resumen": resumen,
+        })
+        await queue.enqueue(item_id, "add_note", {
+            "item_id": item_id,
+            "body": note_body,
+        })
+        # Update local cache immediately
+        await queue.update_cached_contact_fields(phone, {
+            "status": new_status,
+            "resumen": resumen,
+        })
+        logger.info(f"📥 Monday updates queued for {phone[:6]}***: item={item_id}, action={action}")
+    else:
+        # Direct Monday calls (fallback if queue disabled)
+        try:
+            await monday_followup.update_reply(item_id, new_status, summary, resumen=resumen)
+            await monday_followup.add_note(item_id, note_body)
+            logger.info(f"✅ Monday updated for {phone[:6]}***: item={item_id}, action={action}")
+        except Exception as e:
+            logger.error(f"❌ Monday update FAILED for {phone[:6]}***: item={item_id}, action={action}, error={e}")
+
+    # Actions that need immediate side effects (not queued)
+    if action == "handoff":
+        state.silenced_users[phone] = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
+        if settings.OWNER_PHONE:
+            alert = f"🤝 HANDOFF en seguimiento:\n{contact['name']}\nTel: {phone}\nDijo: {text[:200]}"
+            await _send_reply(settings.OWNER_PHONE, alert)
+    elif action == "interested":
+        if settings.OWNER_PHONE:
+            alert = f"🟢 LEAD INTERESADO en seguimiento:\n{contact['name']}\nVehículo: {contact.get('vehicle', 'N/A')}\nDijo: {text[:200]}"
+            await _send_reply(settings.OWNER_PHONE, alert)
 
 
 async def _send_reply(phone: str, text: str, slow: bool = False):
@@ -703,7 +819,9 @@ async def start_campaign(group_id: str, force: bool = False):
     if not monday_followup.is_configured():
         return {"error": "Monday.com not configured"}
 
-    result = await sender.start_campaign(group_id, memory_store=state.memory, force=force)
+    result = await sender.start_campaign(
+        group_id, memory_store=state.memory, force=force, monday_queue=state.monday_queue
+    )
     return result
 
 
@@ -747,3 +865,44 @@ async def debug_items(group_id: str):
             "vehicle": col_map.get(monday_followup.vehicle_col_id, ""),
         })
     return {"group_id": group_id, "total_items": len(result), "items": result}
+
+
+# ============================================================
+# QUEUE & DLQ ENDPOINTS
+# ============================================================
+@app.get("/admin/queue")
+async def queue_status():
+    """Get Monday queue stats: pending, DLQ, cache size."""
+    if not state.monday_queue:
+        return {"error": "Monday queue not enabled"}
+    stats = await state.monday_queue.get_queue_stats()
+    pending = await state.monday_queue.get_pending(limit=10)
+    return {"stats": stats, "next_pending": pending}
+
+
+@app.get("/admin/queue/dlq")
+async def queue_dlq():
+    """View dead letter queue — updates that permanently failed."""
+    if not state.monday_queue:
+        return {"error": "Monday queue not enabled"}
+    items = await state.monday_queue.get_dlq_items(limit=50)
+    return {"dlq_count": len(items), "items": items}
+
+
+@app.post("/admin/queue/dlq/{dlq_id}/retry")
+async def retry_dlq_item(dlq_id: int):
+    """Move a DLQ item back to the outbox for retry."""
+    if not state.monday_queue:
+        return {"error": "Monday queue not enabled"}
+    success = await state.monday_queue.retry_dlq_item(dlq_id)
+    return {"success": success, "dlq_id": dlq_id}
+
+
+@app.post("/admin/cache/sync")
+async def force_cache_sync():
+    """Force a cache sync from Monday."""
+    if not state.monday_queue:
+        return {"error": "Monday queue not enabled"}
+    await _sync_contacts_cache()
+    stats = await state.monday_queue.get_queue_stats()
+    return {"status": "synced", "cache_contacts": stats["cache_contacts"]}

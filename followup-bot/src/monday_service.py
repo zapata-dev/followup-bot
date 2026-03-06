@@ -492,6 +492,81 @@ class MondayFollowupService:
         """
         await self._graphql(query, {"item_id": int(item_id), "body": body})
 
+    # ──────────────────────────────────────────────────────────
+    # CREATE: New item in a group (for orphan contacts)
+    # ──────────────────────────────────────────────────────────
+    async def create_item_in_group(
+        self, group_id: str, name: str, column_values: Dict = None
+    ) -> Optional[str]:
+        """
+        Create a new item in a specific Monday group.
+        Used for the orphan contacts inbox (Propuesta 3).
+        Returns the new item_id or None.
+        """
+        query = """
+        mutation ($board_id: ID!, $group_id: String!, $name: String!, $vals: JSON!) {
+            create_item(
+                board_id: $board_id,
+                group_id: $group_id,
+                item_name: $name,
+                column_values: $vals,
+                create_labels_if_missing: true
+            ) { id }
+        }
+        """
+        vals = column_values or {}
+        data = await self._graphql(query, {
+            "board_id": int(self.board_id),
+            "group_id": group_id,
+            "name": name,
+            "vals": json.dumps(vals),
+        })
+
+        new_id = data.get("data", {}).get("create_item", {}).get("id")
+        if new_id:
+            logger.info(f"✅ Created new item in group {group_id}: {name} → item {new_id}")
+        else:
+            logger.error(f"❌ Failed to create item in group {group_id}: {name}. Response: {json.dumps(data)[:500]}")
+        return new_id
+
+    # ──────────────────────────────────────────────────────────
+    # BULK: Get all contacts for cache sync
+    # ──────────────────────────────────────────────────────────
+    async def get_all_contacts_for_cache(self, group_ids: List[str] = None) -> List[Dict]:
+        """
+        Fetch contacts from specified groups (or all groups) for local cache.
+        Returns list of {phone, item_id, name, vehicle, notes, resumen, status, group_id, group_title}.
+        """
+        if not group_ids:
+            groups = await self.get_groups()
+            group_ids = [g["id"] for g in groups]
+
+        all_contacts = []
+        for gid in group_ids:
+            try:
+                items = await self._get_group_items(gid)
+                for item in items:
+                    col_map = {cv["id"]: cv.get("text", "") for cv in item.get("column_values", [])}
+                    phone = col_map.get(self.dedupe_col_id, "") or col_map.get(self.phone_col_id, "")
+                    if not phone:
+                        continue
+                    all_contacts.append({
+                        "phone": phone,
+                        "item_id": item["id"],
+                        "name": item.get("name", ""),
+                        "vehicle": col_map.get(self.vehicle_col_id, ""),
+                        "notes": col_map.get(self.notes_col_id, ""),
+                        "resumen": col_map.get(self.resumen_col_id, ""),
+                        "status": col_map.get(self.status_col_id, ""),
+                        "group_id": item.get("group", {}).get("id", gid),
+                        "group_title": item.get("group", {}).get("title", ""),
+                    })
+            except Exception as e:
+                logger.error(f"❌ Failed to fetch group {gid} for cache: {e}")
+
+        logger.info(f"📦 Fetched {len(all_contacts)} contacts from {len(group_ids)} groups for cache")
+        return all_contacts
+
 
 # Singleton
 monday_followup = MondayFollowupService()
