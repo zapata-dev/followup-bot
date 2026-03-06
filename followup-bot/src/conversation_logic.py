@@ -178,7 +178,10 @@ MANEJO DE MENSAJES FUERA DE TEMA (piropos, bromas, coqueteo, temas random):
 
 USO DE DATOS DEL CLIENTE (CRITICO — personaliza SIEMPRE):
 - Si tienes el vehiculo de interes, SIEMPRE mencionalo por nombre especifico.
-  NUNCA digas "vehiculo comercial", "tu unidad", "el camion" si sabes que es un "Freightliner M2".
+  NUNCA digas "vehiculo comercial", "tu unidad", "el camion" si sabes el modelo exacto.
+- Si el campo Vehiculo dice "Sin dato" o esta vacio, NO inventes ningun modelo.
+  Pregunta: "Que unidad te interesa?" o "Que tipo de camion buscas?"
+  NUNCA uses nombres de modelos que no estan en los DATOS del cliente.
 - Si tienes notas o resumen previo, USALOS. No preguntes cosas que ya sabes.
 - Si el primer mensaje fue muy largo o generico, COMPENSA siendo ultra-directo y corto.
 
@@ -324,9 +327,9 @@ DATOS:
 TU ROL: Seguimiento de calidad. Eres cercana, directa y empática.
 
 REGLA CRITICA — USA LOS DATOS:
-- SIEMPRE menciona el vehiculo ESPECIFICO del cliente (ej: "el Freightliner M2",
-  "la International CV", "el Kenworth T680"). NUNCA digas "vehiculo comercial",
-  "tu unidad" ni nada generico si tienes el dato.
+- SIEMPRE menciona el vehiculo ESPECIFICO del cliente usando el dato de arriba.
+  NUNCA digas "vehiculo comercial", "tu unidad" ni nada generico si tienes el dato.
+- Si el campo Vehiculo dice "Sin dato", NO inventes ningun modelo. Pregunta cual le interesa.
 - Si hay notas o resumen, usalo para contextualizar. No preguntes cosas que ya sabes.
 - Si el resumen dice que ya cotizo, no preguntes "que te interesa?" — pregunta
   "como te fue con la cotizacion del [vehiculo]?"
@@ -526,14 +529,18 @@ async def handle_reply(
             "y breve. Maximo 1 oracion.\n"
         )
 
+    vehicle = contact_data.get("vehicle", "").strip()
+    notes = contact_data.get("notes", "").strip()
+    resumen = contact_data.get("resumen", "").strip()
+
     system_prompt = prompt_template.format(
         bot_name=BOT_NAME,
         company_name=COMPANY_NAME,
         client_name=contact_data.get("name", "cliente").split("|")[0].strip(),
-        vehicle=contact_data.get("vehicle", "unidad de interés"),
+        vehicle=vehicle or "Sin dato",
         last_contact=contact_data.get("last_contact", "reciente"),
-        notes=contact_data.get("notes", "Sin notas"),
-        resumen=contact_data.get("resumen", "Sin resumen previo"),
+        notes=notes or "Sin notas",
+        resumen=resumen or "Sin resumen previo",
         company_product=COMPANY_PRODUCT,
         company_location=COMPANY_LOCATION,
         company_url=COMPANY_URL,
@@ -544,6 +551,14 @@ async def handle_reply(
     # Append dynamic hints after the system prompt
     if presentation_hint:
         system_prompt += presentation_hint
+
+    # Warn AI when vehicle data is missing — prevent hallucinating models
+    if not vehicle:
+        system_prompt += (
+            "\n⚠️ CRITICO: NO tienes dato de vehiculo para este cliente. "
+            "NO inventes, NO menciones ningun modelo de camion. "
+            "Si necesitas hablar del vehiculo, pregunta cual le interesa.\n"
+        )
 
     # 4. Build messages for GPT
     messages = [{"role": "system", "content": system_prompt}]

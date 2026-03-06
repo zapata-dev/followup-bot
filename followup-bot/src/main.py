@@ -501,18 +501,32 @@ async def _process_reply(phone: str, text: str):
 
     # Detect campaign type from Monday group
     campaign_type = detect_campaign_type(contact.get("group_title", ""))
-    logger.info(f"📋 Contact in campaign type: {campaign_type} (group: {contact.get('group_title', 'N/A')})")
+
+    # ── LOG: Monday data being used for AI context ──
+    contact_vehicle = contact.get("vehicle", "")
+    contact_notes = contact.get("notes", "")
+    contact_resumen = contact.get("resumen", "")
+    logger.info(
+        f"📋 MONDAY DATA for {phone[:6]}***:\n"
+        f"   Name: {contact.get('name', 'N/A')}\n"
+        f"   Vehicle: {contact_vehicle or '(VACÍO)'}\n"
+        f"   Notes: {contact_notes[:150] or '(VACÍO)'}\n"
+        f"   Resumen: {contact_resumen[:150] or '(VACÍO)'}\n"
+        f"   Group: {contact.get('group_title', 'N/A')}\n"
+        f"   Campaign: {campaign_type}"
+    )
 
     # Process with AI
+    contact_data = {
+        "name": contact.get("name", ""),
+        "vehicle": contact_vehicle,
+        "notes": contact_notes,
+        "resumen": contact_resumen,
+        "last_contact": contact.get("last_contact", ""),
+    }
     result = await handle_reply(
         user_text=text,
-        contact_data={
-            "name": contact.get("name", ""),
-            "vehicle": contact.get("vehicle", ""),
-            "notes": contact.get("notes", ""),
-            "resumen": contact.get("resumen", ""),
-            "last_contact": contact.get("last_contact", ""),
-        },
+        contact_data=contact_data,
         conversation_history=history,
         campaign_type=campaign_type,
     )
@@ -521,9 +535,15 @@ async def _process_reply(phone: str, text: str):
     action = result["action"]
     summary = result["summary"]
 
+    # ── LOG: What the bot will respond ──
+    logger.info(
+        f"🤖 BOT REPLY to {phone[:6]}***:\n"
+        f"   Action: {action}\n"
+        f"   Reply: {reply_text[:300]}"
+    )
+
     # Off-hours: add schedule notice to reply (except STOP responses)
     # Configurable via env vars: OFF_HOURS_MSG_SUNDAY, OFF_HOURS_MSG_SATURDAY, OFF_HOURS_MSG_WEEKNIGHT
-    # Set any to "" (empty) in Render to disable that specific message
     if _off_hours and action != "stop":
         now_mx = get_mexico_now()
         if now_mx.weekday() == 6:  # Sunday
