@@ -293,7 +293,7 @@ class SenderService:
     # ──────────────────────────────────────────────────────────
     # CAMPAIGN EXECUTION
     # ──────────────────────────────────────────────────────────
-    async def start_campaign(self, group_id: str, memory_store=None, force: bool = False) -> Dict:
+    async def start_campaign(self, group_id: str, memory_store=None, force: bool = False, monday_queue=None) -> Dict:
         """Start sending messages to all pending contacts in a Monday group."""
         if group_id in self._active_campaigns and self._active_campaigns[group_id]:
             return {"status": "already_running", "group_id": group_id}
@@ -301,7 +301,7 @@ class SenderService:
         self._paused_campaigns.discard(group_id)
         self._active_campaigns[group_id] = True
 
-        asyncio.create_task(self._run_campaign(group_id, memory_store, force=force))
+        asyncio.create_task(self._run_campaign(group_id, memory_store, force=force, monday_queue=monday_queue))
 
         return {"status": "started", "group_id": group_id, "force": force}
 
@@ -311,7 +311,7 @@ class SenderService:
         self._active_campaigns[group_id] = False
         return {"status": "paused", "group_id": group_id}
 
-    async def _run_campaign(self, group_id: str, memory_store=None, force: bool = False):
+    async def _run_campaign(self, group_id: str, memory_store=None, force: bool = False, monday_queue=None):
         """
         Background task: iterate through pending contacts and send messages.
 
@@ -403,7 +403,19 @@ class SenderService:
                     result = await self._send_whatsapp(phone, message, http_client)
 
                     if result["success"]:
-                        await monday_followup.update_send_date(contact["item_id"], normalized_phone=phone)
+                        # Update Monday via queue if available, otherwise direct
+                        if monday_queue:
+                            await monday_queue.enqueue(contact["item_id"], "update_send_date", {
+                                "item_id": contact["item_id"],
+                                "normalized_phone": phone,
+                            })
+                            # Also update cache
+                            await monday_queue.cache_contact(phone, {
+                                **contact,
+                                "status": "Enviado",
+                            })
+                        else:
+                            await monday_followup.update_send_date(contact["item_id"], normalized_phone=phone)
 
                         if memory_store:
                             await memory_store.log_send(
@@ -424,7 +436,13 @@ class SenderService:
                         self._sends_today += 1
                     else:
                         logger.error(f"❌ Failed to send to {phone[:6]}***: {result['error']}")
-                        await monday_followup.mark_error(contact["item_id"], result["error"])
+                        if monday_queue:
+                            await monday_queue.enqueue(contact["item_id"], "mark_error", {
+                                "item_id": contact["item_id"],
+                                "error": result["error"],
+                            })
+                        else:
+                            await monday_followup.mark_error(contact["item_id"], result["error"])
 
                         if memory_store:
                             await memory_store.log_send(
