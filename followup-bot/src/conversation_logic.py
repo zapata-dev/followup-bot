@@ -633,14 +633,27 @@ async def handle_reply(
     # If the bot confirms a time, says "te espero", gives an address, or says
     # "pasa a la oficina", replace the reply with a proper handoff message.
     scheduling_violations = [
+        # Confirming presence/location
         "te espero", "te esperamos", "pasa a la oficina", "pasa a la sucursal",
-        "te parece bien a las", "nos vemos a las", "a las 5", "a las 6",
-        "a las 7", "a las 8", "a las 9", "a las 10", "a las 11", "a las 12",
-        "a las 1", "a las 2", "a las 3", "a las 4",
-        "ven a las", "te veo a las", "aqui te espero", "aquí te espero",
-        "ya te estoy esperando",
+        "aqui te espero", "aquí te espero", "ya te estoy esperando",
+        "te veo aqui", "te veo aquí", "te recibo en",
+        # Confirming times
+        "te parece bien a las", "nos vemos a las",
+        "ven a las", "te veo a las",
+        # Creative scheduling the LLM might try
+        "date una vuelta", "te esperamos hoy", "te esperamos mañana",
+        "te esperamos manana", "pasate por", "pásate por",
+        "caele", "te caigo", "nos vemos hoy", "nos vemos mañana",
+        "nos vemos manana", "vienes hoy", "vienes mañana",
+        "lo retomamos esta semana o",
+        # Giving specific addresses or locations
+        "en la sucursal de", "en selectrucks", "en la agencia",
+        "en nuestras instalaciones",
     ]
-    if any(v in reply_lower for v in scheduling_violations):
+    # Also check for time patterns like "a las 5", "a las 10:30"
+    _time_pattern = re.search(r'\ba las \d{1,2}(:\d{2})?\b', reply_lower)
+    has_violation = any(v in reply_lower for v in scheduling_violations) or bool(_time_pattern)
+    if has_violation:
         client_name = contact_data.get("name", "").split("|")[0].strip()
         name_part = f" {client_name}" if client_name else ""
         reply = (
