@@ -71,14 +71,22 @@ async def _llm_completion(messages: list, max_tokens: int = 200, temperature: fl
 # ============================================================
 # TIME
 # ============================================================
+_DIAS_SEMANA = {
+    "Monday": "Lunes", "Tuesday": "Martes", "Wednesday": "Miércoles",
+    "Thursday": "Jueves", "Friday": "Viernes", "Saturday": "Sábado", "Sunday": "Domingo",
+}
+
+
 def get_mexico_time() -> Tuple[datetime, str]:
     try:
         tz = pytz.timezone("America/Mexico_City")
         now = datetime.now(tz)
-        return now, now.strftime("%A %I:%M %p")
     except Exception:
         now = datetime.now()
-        return now, now.strftime("%A %I:%M %p")
+    dia_en = now.strftime("%A")
+    dia_es = _DIAS_SEMANA.get(dia_en, dia_en)
+    time_str = f"{dia_es} {now.strftime('%d/%m/%Y')} {now.strftime('%I:%M %p')}"
+    return now, time_str
 
 
 # ============================================================
@@ -190,6 +198,39 @@ LECTURA DE INTENCION:
 SOLO di "ya no te contactaremos" si el cliente dice EXPLICITAMENTE: "no me interesa",
 "no gracias", "no me contacten", "dejen de escribirme", "borrenme", "alto", "stop".
 Cualquier otra cosa (quejas, preguntas, bromas, ambiguedad) es engagement activo.
+
+MENSAJES MULTIMEDIA (audio, foto, video, documento, sticker, ubicacion):
+- Los mensajes de audio, fotos y videos se procesan automaticamente.
+  El contenido aparecera entre corchetes, por ejemplo:
+  [Mensaje de voz transcrito: "quiero ver el camion el sabado"]
+  [Foto del cliente — contenido: cotizacion de un vehiculo con precio de $500,000]
+  [Video del cliente — contenido: recorrido de un camion en carretera]
+- Cuando recibas un mensaje transcrito/descrito, responde AL CONTENIDO como si el
+  cliente lo hubiera escrito. NO menciones que fue un audio o una foto.
+  Ejemplo: si el audio dice "quiero ver el camion", responde sobre la visita, no digas
+  "escuche tu audio".
+- Si el mensaje dice "[El cliente envió un mensaje de voz]" SIN transcripcion,
+  significa que no se pudo procesar. Pide que lo escriba por texto.
+- Si el mensaje dice "[El cliente envió una foto]" SIN descripcion,
+  pide que describa que es.
+- Para documentos sin procesar, pide que explique de que se trata.
+- Stickers y ubicaciones: ignora y continua la conversacion normalmente.
+- Si el mensaje incluye un texto/caption ademas del medio, responde al texto.
+
+HORARIO DE ATENCION Y CITAS (CRITICO — respeta SIEMPRE):
+- Lunes a Viernes: 9:00 AM a 6:00 PM
+- Sabados: 9:00 AM a 2:00 PM
+- Domingos: CERRADO
+- La hora y fecha actuales estan en el campo "Hora" arriba. USALAS para saber que dia y hora es.
+- NUNCA agendes, sugieras ni confirmes citas fuera de este horario.
+- Si el cliente pide una cita en horario cerrado (domingo, o despues de las 6pm entre semana,
+  o despues de las 2pm en sabado), sugiere el siguiente horario disponible.
+  Ejemplo: si es sabado 3pm, sugiere "el lunes a las 9am".
+  Si es domingo, sugiere "el lunes a primera hora".
+  Si es viernes 7pm, sugiere "manana sabado a las 9am" o "el lunes".
+- Si el cliente quiere agendar, pregunta dia y hora DENTRO del horario.
+- NO inventes disponibilidad de horarios especificos (ej: "a las 10:30 hay espacio").
+  Solo confirma que el horario que pide el cliente cae dentro del rango de atencion.
 
 FORMATO: Solo texto del mensaje. Sin prefijos, sin comillas, sin emojis. Maximo 2 oraciones.
 """

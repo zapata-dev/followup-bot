@@ -32,6 +32,7 @@ from src.sender_service import sender, is_office_hours, get_mexico_now
 from src.conversation_logic import handle_reply, detect_stop, detect_campaign_type, generate_conversation_resumen
 from src.phone_utils import normalize_phone
 from src.dashboard import DASHBOARD_HTML
+from src.media_processor import process_media_message
 
 # ============================================================
 # BOT / AUTO-RESPONDER DETECTION
@@ -307,7 +308,7 @@ async def _process_webhook(body: dict):
     if not phone:
         return
 
-    # Extract text
+    # Extract text and detect media type
     msg_content = message.get("message", {})
     text = (
         msg_content.get("conversation", "")
@@ -315,10 +316,72 @@ async def _process_webhook(body: dict):
         or ""
     ).strip()
 
+    # Detect media messages: try Gemini multimodal first, fall back to placeholder
+    media_type = None
     if not text:
-        # Could be audio/image — for now, skip
-        logger.info(f"📎 Non-text message from {phone[:6]}***, skipping")
-        return
+        # Try to process audio/image/video with Gemini multimodal
+        if any(k in msg_content for k in ("audioMessage", "imageMessage", "videoMessage")):
+            try:
+                media_result = await process_media_message(
+                    msg_content=msg_content,
+                    message_obj=message,
+                    evolution_url=settings.EVOLUTION_API_URL,
+                    api_key=settings.EVOLUTION_API_KEY,
+                    instance=settings.EVO_INSTANCE,
+                )
+            except Exception as e:
+                logger.error(f"❌ Media processing error: {e}")
+                media_result = None
+
+            if media_result:
+                media_type = media_result["type"]
+                processed_text = media_result["text"]
+                # Build context so the AI knows what was sent
+                if media_type == "audio":
+                    text = f"[Mensaje de voz transcrito: \"{processed_text}\"]"
+                elif media_type == "imagen":
+                    caption = msg_content.get("imageMessage", {}).get("caption", "").strip()
+                    text = f"[Foto del cliente — contenido: {processed_text}]"
+                    if caption:
+                        text += f" Texto del cliente: {caption}"
+                elif media_type == "video":
+                    caption = msg_content.get("videoMessage", {}).get("caption", "").strip()
+                    text = f"[Video del cliente — contenido: {processed_text}]"
+                    if caption:
+                        text += f" Texto del cliente: {caption}"
+                logger.info(f"🧠 Media processed ({media_type}) from {phone[:6]}***: {text[:120]}")
+
+        # Fallback placeholders for media that Gemini can't process or other types
+        if not text:
+            if "audioMessage" in msg_content:
+                media_type = "audio"
+                text = "[El cliente envió un mensaje de voz]"
+            elif "imageMessage" in msg_content:
+                media_type = "imagen"
+                caption = msg_content["imageMessage"].get("caption", "").strip()
+                text = f"[El cliente envió una foto]{': ' + caption if caption else ''}"
+            elif "videoMessage" in msg_content:
+                media_type = "video"
+                caption = msg_content["videoMessage"].get("caption", "").strip()
+                text = f"[El cliente envió un video]{': ' + caption if caption else ''}"
+            elif "documentMessage" in msg_content:
+                media_type = "documento"
+                filename = msg_content["documentMessage"].get("fileName", "").strip()
+                text = f"[El cliente envió un documento]{': ' + filename if filename else ''}"
+            elif "stickerMessage" in msg_content:
+                media_type = "sticker"
+                text = "[El cliente envió un sticker]"
+            elif "contactMessage" in msg_content:
+                media_type = "contacto"
+                display = msg_content["contactMessage"].get("displayName", "").strip()
+                text = f"[El cliente compartió un contacto]{': ' + display if display else ''}"
+            elif "locationMessage" in msg_content:
+                media_type = "ubicacion"
+                text = "[El cliente compartió su ubicación]"
+            else:
+                logger.info(f"📎 Unsupported message type from {phone[:6]}***, skipping")
+                return
+            logger.info(f"📎 Media fallback ({media_type}) from {phone[:6]}***: {text}")
 
     # Filter out auto-responders from other businesses/bots
     if _is_auto_responder(text):
@@ -446,44 +509,50 @@ async def _process_webhook(body: dict):
         logger.error(f"❌ Resumen generation failed: {e}")
 
     # Update Monday based on action — ALWAYS update all fields + add note
-    if action == "stop":
-        await monday_followup.update_reply(contact["item_id"], "STOP", summary, resumen=resumen)
-        await monday_followup.add_note(
-            contact["item_id"],
-            f"🛑 {summary}\n\nResumen: {resumen}" if resumen else f"🛑 {summary}",
-        )
+    item_id = contact["item_id"]
+    try:
+        if action == "stop":
+            await monday_followup.update_reply(item_id, "STOP", summary, resumen=resumen)
+            await monday_followup.add_note(
+                item_id,
+                f"🛑 {summary}\n\nResumen: {resumen}" if resumen else f"🛑 {summary}",
+            )
 
-    elif action == "handoff":
-        await monday_followup.update_reply(contact["item_id"], "Handoff", summary, resumen=resumen)
-        await monday_followup.add_note(
-            contact["item_id"],
-            f"🤝 {summary}\n\nResumen: {resumen}" if resumen else f"🤝 {summary}",
-        )
-        # Silence bot for this user
-        state.silenced_users[phone] = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
-        # Alert owner
-        if settings.OWNER_PHONE:
-            alert = f"🤝 HANDOFF en seguimiento:\n{contact['name']}\nTel: {phone}\nDijo: {text[:200]}"
-            await _send_reply(settings.OWNER_PHONE, alert)
+        elif action == "handoff":
+            await monday_followup.update_reply(item_id, "Handoff", summary, resumen=resumen)
+            await monday_followup.add_note(
+                item_id,
+                f"🤝 {summary}\n\nResumen: {resumen}" if resumen else f"🤝 {summary}",
+            )
+            # Silence bot for this user
+            state.silenced_users[phone] = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
+            # Alert owner
+            if settings.OWNER_PHONE:
+                alert = f"🤝 HANDOFF en seguimiento:\n{contact['name']}\nTel: {phone}\nDijo: {text[:200]}"
+                await _send_reply(settings.OWNER_PHONE, alert)
 
-    elif action == "interested":
-        await monday_followup.update_reply(contact["item_id"], "Interesado", summary, resumen=resumen)
-        await monday_followup.add_note(
-            contact["item_id"],
-            f"🟢 {summary}\n\nResumen: {resumen}" if resumen else f"🟢 {summary}",
-        )
-        # Also alert owner for hot leads
-        if settings.OWNER_PHONE:
-            alert = f"🟢 LEAD INTERESADO en seguimiento:\n{contact['name']}\nVehículo: {contact.get('vehicle', 'N/A')}\nDijo: {text[:200]}"
-            await _send_reply(settings.OWNER_PHONE, alert)
+        elif action == "interested":
+            await monday_followup.update_reply(item_id, "Interesado", summary, resumen=resumen)
+            await monday_followup.add_note(
+                item_id,
+                f"🟢 {summary}\n\nResumen: {resumen}" if resumen else f"🟢 {summary}",
+            )
+            # Also alert owner for hot leads
+            if settings.OWNER_PHONE:
+                alert = f"🟢 LEAD INTERESADO en seguimiento:\n{contact['name']}\nVehículo: {contact.get('vehicle', 'N/A')}\nDijo: {text[:200]}"
+                await _send_reply(settings.OWNER_PHONE, alert)
 
-    else:  # continue
-        await monday_followup.update_reply(contact["item_id"], "Respondió", summary, resumen=resumen)
-        # ALWAYS add note on every reply, not just special actions
-        await monday_followup.add_note(
-            contact["item_id"],
-            f"💬 Cliente: {text[:200]}\n\nBot: {reply_text[:200]}\n\nResumen: {resumen}" if resumen else f"💬 {summary}",
-        )
+        else:  # continue
+            await monday_followup.update_reply(item_id, "Respondió", summary, resumen=resumen)
+            # ALWAYS add note on every reply, not just special actions
+            await monday_followup.add_note(
+                item_id,
+                f"💬 Cliente: {text[:200]}\n\nBot: {reply_text[:200]}\n\nResumen: {resumen}" if resumen else f"💬 {summary}",
+            )
+
+        logger.info(f"✅ Monday updated for {phone[:6]}***: item={item_id}, action={action}")
+    except Exception as e:
+        logger.error(f"❌ Monday update FAILED for {phone[:6]}***: item={item_id}, action={action}, error={e}")
 
 
 async def _send_reply(phone: str, text: str, slow: bool = False):

@@ -11,6 +11,9 @@ aiosqlite==0.20.0
 # OpenAI SDK (v1.x)
 openai==1.59.7
 
+# Google GenAI SDK (multimodal: audio, image, video)
+google-genai>=1.0.0
+
 # Timezone
 pytz==2024.2
 
