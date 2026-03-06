@@ -160,6 +160,7 @@ class GlobalState:
         self.memory: Optional[MemoryStore] = None
         self.monday_queue: Optional[MondayQueue] = None
         self.processed_ids = BoundedOrderedSet(4000)
+        self.bot_sent_ids = BoundedOrderedSet(2000)  # msg IDs sent by bot (for passive handoff)
         self.silenced_users: Dict[str, float] = {}  # phone → silenced_until_ts
         self.startup_time = time.time()
         # Message accumulation buffer: phone → {"texts": [...], "task": asyncio.Task}
@@ -188,7 +189,12 @@ async def lifespan(app: FastAPI):
     # SQLite
     state.memory = MemoryStore(settings.SQLITE_PATH)
     await state.memory.init()
-    logger.info("✅ SQLite initialized")
+    # Restore silenced users from DB (survive restarts)
+    state.silenced_users = await state.memory.load_silenced_users()
+    if state.silenced_users:
+        logger.info(f"✅ SQLite initialized — restored {len(state.silenced_users)} silenced users")
+    else:
+        logger.info("✅ SQLite initialized")
     
     # LLM smoke test — Gemini primary, OpenAI fallback
     from src.conversation_logic import gemini_client, _GEMINI_MODEL, openai_client, FALLBACK_MODEL
@@ -376,8 +382,22 @@ async def _process_webhook(body: dict):
     from_me = key_data.get("fromMe", False)
     remote_jid = key_data.get("remoteJid", "")
 
-    # Skip our own messages
+    # Handle outgoing messages (fromMe=true)
+    # If the bot sent it → skip. If a HUMAN sent it → silence the bot (passive handoff).
     if from_me:
+        if msg_id and msg_id not in state.bot_sent_ids:
+            # A human sent this message from WhatsApp Web/phone — passive handoff
+            phone_raw = remote_jid.replace("@s.whatsapp.net", "").replace("@lid", "")
+            human_phone = normalize_phone(phone_raw)
+            if human_phone and human_phone not in (settings.OWNER_PHONE or ""):
+                silence_until = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
+                state.silenced_users[human_phone] = silence_until
+                if state.memory:
+                    await state.memory.silence_user(human_phone, silence_until, reason="human_takeover")
+                logger.info(
+                    f"🤫 Passive handoff: human sent message to {human_phone[:6]}***, "
+                    f"bot silenced for {settings.AUTO_REACTIVATE_MINUTES}min"
+                )
         return
 
     # Dedup
@@ -477,6 +497,9 @@ async def _process_webhook(body: dict):
             return
         else:
             del state.silenced_users[phone]
+            # Clean up expired entry from SQLite
+            if state.memory:
+                await state.memory.unsilence_user(phone)
 
     # ── Buffer message for accumulation ──
     # If the client sends multiple messages quickly (e.g. "Hola" then "Bien"),
@@ -744,7 +767,10 @@ async def _process_reply(phone: str, text: str):
 
     # Actions that need immediate side effects (not queued)
     if action == "handoff":
-        state.silenced_users[phone] = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
+        silence_until = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
+        state.silenced_users[phone] = silence_until
+        # Persist to SQLite so handoff survives restarts
+        await state.memory.silence_user(phone, silence_until, reason="handoff")
         if settings.OWNER_PHONE:
             alert = f"🤝 HANDOFF en seguimiento:\n{contact['name']}\nTel: {phone}\nDijo: {text[:200]}"
             await _send_reply(settings.OWNER_PHONE, alert)
@@ -787,6 +813,18 @@ async def _send_reply(phone: str, text: str, slow: bool = False):
         r = await client.post(url, json=body, headers=headers)
         if r.status_code >= 400:
             logger.error(f"❌ Evolution send error: {r.status_code} {r.text[:200]}")
+        else:
+            # Track this message ID so we can distinguish bot vs human sends
+            try:
+                resp_data = r.json()
+                sent_id = (
+                    resp_data.get("key", {}).get("id", "")
+                    or resp_data.get("messageId", "")
+                )
+                if sent_id:
+                    state.bot_sent_ids.add(sent_id)
+            except Exception:
+                pass
     except Exception as e:
         logger.error(f"❌ Evolution send failed: {e}")
 
@@ -820,7 +858,8 @@ async def start_campaign(group_id: str, force: bool = False):
         return {"error": "Monday.com not configured"}
 
     result = await sender.start_campaign(
-        group_id, memory_store=state.memory, force=force, monday_queue=state.monday_queue
+        group_id, memory_store=state.memory, force=force,
+        monday_queue=state.monday_queue, bot_sent_ids=state.bot_sent_ids,
     )
     return result
 

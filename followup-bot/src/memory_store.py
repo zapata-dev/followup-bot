@@ -1,11 +1,13 @@
 """
 SQLite memory store for followup bot conversations.
 Stores conversation history per phone for GPT context.
+Also persists silenced users so handoffs survive restarts.
 """
 import aiosqlite
 import json
 import os
 import logging
+import time
 from datetime import datetime
 from typing import Optional, Dict, Any
 
@@ -24,7 +26,7 @@ class MemoryStore:
         self._conn = await aiosqlite.connect(self.path)
         # WAL mode for better concurrent access
         await self._conn.execute("PRAGMA journal_mode=WAL")
-        
+
         # Conversations table (same as Tono-Bot)
         await self._conn.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
@@ -34,7 +36,7 @@ class MemoryStore:
             updated_at TEXT NOT NULL
         )
         """)
-        
+
         # Send queue tracking (backup to Monday, for resilience)
         await self._conn.execute("""
         CREATE TABLE IF NOT EXISTS send_log (
@@ -46,8 +48,64 @@ class MemoryStore:
             error TEXT
         )
         """)
-        
+
+        # Silenced users — persists across restarts
+        await self._conn.execute("""
+        CREATE TABLE IF NOT EXISTS silenced_users (
+            phone TEXT PRIMARY KEY,
+            silenced_until REAL NOT NULL,
+            reason TEXT DEFAULT 'handoff'
+        )
+        """)
+
         await self._conn.commit()
+
+    # ── Silence management ──
+
+    async def silence_user(self, phone: str, until_ts: float, reason: str = "handoff"):
+        """Silence a user until the given timestamp."""
+        await self._conn.execute("""
+        INSERT INTO silenced_users(phone, silenced_until, reason)
+        VALUES(?, ?, ?)
+        ON CONFLICT(phone) DO UPDATE SET
+            silenced_until=excluded.silenced_until,
+            reason=excluded.reason
+        """, (phone, until_ts, reason))
+        await self._conn.commit()
+
+    async def is_silenced(self, phone: str) -> bool:
+        """Check if a user is currently silenced. Auto-cleans expired entries."""
+        now = time.time()
+        cursor = await self._conn.execute(
+            "SELECT silenced_until FROM silenced_users WHERE phone=?", (phone,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return False
+        if now >= row[0]:
+            # Expired — clean up
+            await self._conn.execute("DELETE FROM silenced_users WHERE phone=?", (phone,))
+            await self._conn.commit()
+            return False
+        return True
+
+    async def unsilence_user(self, phone: str):
+        """Remove silence for a user."""
+        await self._conn.execute("DELETE FROM silenced_users WHERE phone=?", (phone,))
+        await self._conn.commit()
+
+    async def load_silenced_users(self) -> Dict[str, float]:
+        """Load all active silenced users (for in-memory cache on startup)."""
+        now = time.time()
+        # Clean expired entries
+        await self._conn.execute("DELETE FROM silenced_users WHERE silenced_until <= ?", (now,))
+        await self._conn.commit()
+        # Load active ones
+        cursor = await self._conn.execute("SELECT phone, silenced_until FROM silenced_users")
+        rows = await cursor.fetchall()
+        return {row[0]: row[1] for row in rows}
+
+    # ── Conversation management ──
 
     async def get(self, phone: str) -> Optional[Dict[str, Any]]:
         cursor = await self._conn.execute(
