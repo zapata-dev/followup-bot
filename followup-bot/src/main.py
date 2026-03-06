@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     HUMAN_DETECTION_WINDOW_SECONDS: int = 3
 
     # Message accumulation — seconds to wait for additional messages before replying
-    MESSAGE_ACCUMULATION_SECONDS: float = 5.0
+    MESSAGE_ACCUMULATION_SECONDS: float = 8.0
 
     # Reply to contacts not found in Monday (useful for testing)
     REPLY_TO_UNKNOWN_CONTACTS: bool = True
