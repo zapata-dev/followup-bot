@@ -87,8 +87,8 @@ class Settings(BaseSettings):
     AUTO_REACTIVATE_MINUTES: int = 60
     HUMAN_DETECTION_WINDOW_SECONDS: int = 3
 
-    # Message accumulation
-    MESSAGE_ACCUMULATION_SECONDS: float = 4.0
+    # Message accumulation — seconds to wait for additional messages before replying
+    MESSAGE_ACCUMULATION_SECONDS: float = 5.0
 
     # Reply to contacts not found in Monday (useful for testing)
     REPLY_TO_UNKNOWN_CONTACTS: bool = True
@@ -155,6 +155,8 @@ class GlobalState:
         self.processed_ids = BoundedOrderedSet(4000)
         self.silenced_users: Dict[str, float] = {}  # phone → silenced_until_ts
         self.startup_time = time.time()
+        # Message accumulation buffer: phone → {"texts": [...], "task": asyncio.Task}
+        self.message_buffers: Dict[str, Dict] = {}
 
     @property
     def uptime_seconds(self) -> float:
@@ -271,15 +273,20 @@ async def _process_webhook_safe(body: dict):
 
 
 async def _process_webhook(body: dict):
-    """Main webhook processor."""
+    """
+    Main webhook processor.
+    Extracts phone + text, then buffers the message.
+    If multiple messages arrive within MESSAGE_ACCUMULATION_SECONDS,
+    they are combined into a single reply (more human-like).
+    """
     event = body.get("event", "")
-    
+
     # Only process incoming messages
     if event not in ("messages.upsert", "MESSAGES_UPSERT", "messages"):
         return
 
     data = body.get("data", {})
-    
+
     # Handle different Evolution API payload formats
     message = data
     if isinstance(data, list):
@@ -395,12 +402,68 @@ async def _process_webhook(body: dict):
         else:
             del state.silenced_users[phone]
 
+    # ── Buffer message for accumulation ──
+    # If the client sends multiple messages quickly (e.g. "Hola" then "Bien"),
+    # we wait a few seconds to group them into a single AI response.
+    await _buffer_message(phone, text)
+
+
+async def _buffer_message(phone: str, text: str):
+    """
+    Accumulate messages from the same phone within a time window.
+    Resets the timer on each new message. When the timer fires,
+    all accumulated texts are combined and processed as one.
+    """
+    buf = state.message_buffers.get(phone)
+
+    if buf:
+        # Add to existing buffer, cancel the pending flush
+        buf["texts"].append(text)
+        buf["task"].cancel()
+        logger.info(f"📦 Buffered message #{len(buf['texts'])} from {phone[:6]}***: {text[:60]}")
+    else:
+        # First message — create new buffer
+        buf = {"texts": [text]}
+        state.message_buffers[phone] = buf
+        logger.info(f"📩 New message from {phone[:6]}***: {text[:80]}")
+
+    # Start/restart the flush timer
+    buf["task"] = asyncio.create_task(
+        _flush_buffer(phone, settings.MESSAGE_ACCUMULATION_SECONDS)
+    )
+
+
+async def _flush_buffer(phone: str, delay: float):
+    """Wait for accumulation window, then process all buffered messages."""
+    await asyncio.sleep(delay)
+
+    buf = state.message_buffers.pop(phone, None)
+    if not buf or not buf["texts"]:
+        return
+
+    # Combine all buffered texts into one
+    texts = buf["texts"]
+    if len(texts) > 1:
+        combined = "\n".join(texts)
+        logger.info(f"📦 Combined {len(texts)} messages from {phone[:6]}***: {combined[:120]}")
+    else:
+        combined = texts[0]
+
+    # Process the combined message
+    try:
+        await _process_reply(phone, combined)
+    except Exception as e:
+        logger.error(f"❌ Reply processing error for {phone[:6]}***: {e}")
+
+
+async def _process_reply(phone: str, text: str):
+    """Process a (potentially combined) message and send a single reply."""
     # Determine if we're outside office hours (slower response)
     _off_hours = not is_office_hours()
     if _off_hours:
         logger.info(f"🌙 Off-hours reply from {phone[:6]}***: {text[:80]}")
     else:
-        logger.info(f"📩 Reply from {phone[:6]}***: {text[:80]}")
+        logger.info(f"📩 Processing reply from {phone[:6]}***: {text[:80]}")
 
     # Look up contact in Monday
     contact = await monday_followup.find_by_phone(phone)
@@ -566,13 +629,18 @@ async def _send_reply(phone: str, text: str, slow: bool = False):
     headers = {"apikey": settings.EVOLUTION_API_KEY, "Content-Type": "application/json"}
     body = {"number": jid, "text": text}
 
-    # Typing delay (simulate human)
-    # Off-hours: respond slower (15-30s) to look more natural
+    # Typing delay — simulate human reading + typing
+    # Longer messages get slightly longer "typing" time
+    char_count = len(text)
     if slow:
+        # Off-hours: respond slower to look more natural
         delay = random.uniform(15, 30)
         logger.info(f"🌙 Off-hours reply, waiting {delay:.0f}s")
     else:
-        delay = random.uniform(3, 7)
+        # Base: 4-8s, plus ~1s per 80 chars (reading speed), capped at 15s
+        base = random.uniform(4, 8)
+        typing_extra = min(char_count / 80, 7)
+        delay = base + typing_extra
     await asyncio.sleep(delay)
 
     try:
