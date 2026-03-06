@@ -280,7 +280,17 @@ class SenderService:
                 if r.status_code >= 400:
                     return {"success": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
 
-                return {"success": True, "error": None}
+                # Extract sent message ID for passive handoff tracking
+                sent_id = ""
+                try:
+                    resp_data = r.json()
+                    sent_id = (
+                        resp_data.get("key", {}).get("id", "")
+                        or resp_data.get("messageId", "")
+                    )
+                except Exception:
+                    pass
+                return {"success": True, "error": None, "msg_id": sent_id}
 
             except Exception as e:
                 if attempt < 2:
@@ -293,7 +303,7 @@ class SenderService:
     # ──────────────────────────────────────────────────────────
     # CAMPAIGN EXECUTION
     # ──────────────────────────────────────────────────────────
-    async def start_campaign(self, group_id: str, memory_store=None, force: bool = False, monday_queue=None) -> Dict:
+    async def start_campaign(self, group_id: str, memory_store=None, force: bool = False, monday_queue=None, bot_sent_ids=None) -> Dict:
         """Start sending messages to all pending contacts in a Monday group."""
         if group_id in self._active_campaigns and self._active_campaigns[group_id]:
             return {"status": "already_running", "group_id": group_id}
@@ -403,6 +413,9 @@ class SenderService:
                     result = await self._send_whatsapp(phone, message, http_client)
 
                     if result["success"]:
+                        # Track bot-sent message ID for passive handoff detection
+                        if bot_sent_ids and result.get("msg_id"):
+                            bot_sent_ids.add(result["msg_id"])
                         # Update Monday via queue if available, otherwise direct
                         if monday_queue:
                             await monday_queue.enqueue(contact["item_id"], "update_send_date", {
