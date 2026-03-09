@@ -311,7 +311,7 @@ class SenderService:
         self._paused_campaigns.discard(group_id)
         self._active_campaigns[group_id] = True
 
-        asyncio.create_task(self._run_campaign(group_id, memory_store, force=force, monday_queue=monday_queue))
+        asyncio.create_task(self._run_campaign(group_id, memory_store, force=force, monday_queue=monday_queue, bot_sent_ids=bot_sent_ids))
 
         return {"status": "started", "group_id": group_id, "force": force}
 
@@ -321,7 +321,7 @@ class SenderService:
         self._active_campaigns[group_id] = False
         return {"status": "paused", "group_id": group_id}
 
-    async def _run_campaign(self, group_id: str, memory_store=None, force: bool = False, monday_queue=None):
+    async def _run_campaign(self, group_id: str, memory_store=None, force: bool = False, monday_queue=None, bot_sent_ids=None):
         """
         Background task: iterate through pending contacts and send messages.
 
