@@ -271,17 +271,19 @@ class MondayFollowupService:
     def _phone_variants(self, phone_clean: str) -> list:
         """
         Generate all possible formats a phone might be stored as in Monday.
-        Input: '5213131073749' (normalized 13 digits)
-        Output: ['5213131073749', '3131073749', '523131073749', '13131073749',
-                 '+5213131073749', '+52 1 313 107 3749']
+        Input: '5214611400182' (normalized 13 digits)
+        Output: ['5214611400182', '4611400182', '524611400182', '14611400182',
+                 '+5214611400182', '+524611400182']
+        Handles Mexican numbers with and without the '1' after country code.
         """
         variants = [phone_clean]
         if len(phone_clean) == 13 and phone_clean.startswith("521"):
-            ten = phone_clean[3:]          # 3131073749
-            twelve = "52" + ten            # 523131073749
-            eleven = "1" + ten             # 13131073749
-            plus_full = "+" + phone_clean  # +5213131073749
-            variants.extend([ten, twelve, eleven, plus_full])
+            ten = phone_clean[3:]          # 4611400182
+            twelve = "52" + ten            # 524611400182
+            eleven = "1" + ten             # 14611400182
+            plus_full = "+" + phone_clean  # +5214611400182
+            plus_no1 = "+52" + ten         # +524611400182  (Monday phone column format)
+            variants.extend([ten, twelve, eleven, plus_full, plus_no1])
         return variants
 
     async def _search_phone_in_column(self, col_id: str, value: str) -> Optional[dict]:
