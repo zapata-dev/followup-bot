@@ -35,6 +35,7 @@ class MondayFollowupService:
         self.dedupe_col_id = os.getenv("MONDAY_DEDUPE_COLUMN_ID", "text_mm12nh13")
         self.error_col_id = os.getenv("MONDAY_ERROR_COLUMN_ID", "text_mm12dd4y")
         self.resumen_col_id = os.getenv("MONDAY_RESUMEN_COLUMN_ID", "long_text_mm12qhsy")
+        self.location_col_id = os.getenv("MONDAY_LOCATION_COLUMN_ID", "dropdown_mm1a2hv5")
 
     def is_configured(self) -> bool:
         return bool(self.api_key and self.board_id)
