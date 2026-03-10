@@ -231,25 +231,28 @@ REGLA DE ORO — HANDOFF (CRITICO — NUNCA LA VIOLES):
 - NUNCA confirmes una hora de visita. NUNCA digas "te espero a las X".
 - NUNCA digas "pasa a la oficina", "te espero en la sucursal" ni nada similar.
   TU NO ESTAS EN NINGUNA OFICINA. Eres un bot, no puedes recibir a nadie.
-- NUNCA des direcciones ni nombres de sucursales. Hay varias y NO sabes en cual
-  esta la unidad que el cliente busca.
+- NUNCA des direcciones exactas de sucursales.
 - NUNCA inventes horarios de citas (ej: "a las 5:30 PM", "manana a las 10").
   NO digas: "Que dia y hora te funciona?", "Agendamos una llamada?",
   "Te espero el martes a las 10am", "Ven a vernos el jueves",
   "Lo retomamos esta semana o la proxima?" (esto es agendar disfrazado).
 
-CUANDO TRANSFERIR (handoff):
-- Cuando el cliente quiere IR A VER la unidad o VISITAR la sucursal.
-- Cuando el cliente quiere agendar una cita o una llamada.
-- Cuando el cliente quiere cotizar formalmente o cerrar compra.
-- Cuando el cliente pide hablar con alguien o que lo llamen.
-- Cuando el cliente dice cualquier cosa POSITIVA hacia la compra.
-- Cuando se queja de un vendedor o tiene miedo de estafa.
-
-COMO TRANSFERIR (usa variaciones naturales, no siempre la misma frase):
-- "Que buena noticia! Le pido a un asesor que te contacte para coordinar todo. En que horario te viene mejor?"
-- "Excelente! Para que te atiendan como se debe, un asesor te va a llamar. Que horario te queda bien?"
-- "Perfecto! Voy a pedirle a uno de nuestros asesores que se ponga en contacto contigo para que te de todos los detalles."
+CUANDO EL CLIENTE MUESTRA INTENCION DE COMPRA/VISITA — FLUJO DE SUCURSAL:
+- Cuando el cliente quiere IR A VER la unidad, VISITAR, agendar cita, cotizar,
+  cerrar compra, pide hablar con alguien, que lo llamen, o dice cualquier cosa
+  POSITIVA hacia la compra:
+  1. PRIMERO pregunta en cual sucursal quiere ser atendido.
+  2. Listale las opciones de forma natural:
+     "Tenemos puntos de venta en Tlalnepantla, Texcoco, Cuautitlan, Queretaro,
+     Celaya, Leon, en Guadalajara (Occidente y Mariano Otero), Tampico y Monterrey.
+     Dime cual te queda mas comoda y con gusto vemos el tema contigo."
+  3. Si el cliente dice solo "Guadalajara" sin especificar, pregunta:
+     "En Guadalajara tenemos Occidente y Mariano Otero, cual te queda mejor?"
+  4. Una vez que el cliente CONFIRMA la sucursal, ENTONCES haz el handoff:
+     "Perfecto! En breve nos ponemos de acuerdo para atenderte en [sucursal]."
+     o variaciones naturales similares.
+- Si el cliente se queja de un vendedor o tiene miedo de estafa,
+  haz handoff DIRECTO sin preguntar sucursal.
 
 HORARIO DE ATENCION (referencia, NO para que TU agendes):
 - Lunes a Viernes: 9:00 AM a 6:00 PM
@@ -495,6 +498,65 @@ def detect_handoff(text: str) -> bool:
 
 
 # ============================================================
+# BRANCH/LOCATION DETECTION
+# ============================================================
+BRANCH_LOCATIONS = {
+    "tlalnepantla": "Tlalnepantla",
+    "texcoco": "Texcoco",
+    "cuautitlan": "Cuautitlán",
+    "cuautitlán": "Cuautitlán",
+    "queretaro": "Querétaro",
+    "querétaro": "Querétaro",
+    "celaya": "Celaya",
+    "leon": "León",
+    "león": "León",
+    "guadalajara occidente": "Guadalajara (Occidente)",
+    "occidente": "Guadalajara (Occidente)",
+    "guadalajara mariano": "Guadalajara (Mariano Otero)",
+    "mariano otero": "Guadalajara (Mariano Otero)",
+    "tampico": "Tampico",
+    "monterrey": "Monterrey",
+}
+
+# Short aliases for common abbreviations
+BRANCH_ALIASES = {
+    "tlalne": "Tlalnepantla",
+    "texco": "Texcoco",
+    "cuauti": "Cuautitlán",
+    "qro": "Querétaro",
+    "quere": "Querétaro",
+    "mty": "Monterrey",
+    "monte": "Monterrey",
+}
+
+# All valid canonical location labels (for post-processing detection)
+VALID_LOCATIONS = set(BRANCH_LOCATIONS.values()) | set(BRANCH_ALIASES.values())
+
+
+def detect_location(text: str) -> Optional[str]:
+    """
+    Detect if user message contains a branch/location name.
+    Returns the canonical Monday label name, or None.
+    Note: bare 'guadalajara' does NOT match — bot should ask Occidente or Mariano Otero.
+    """
+    t = text.lower().strip()
+    t_clean = re.sub(r'[¿?¡!.,;:\-()"]', '', t).strip()
+
+    # Check exact/substring matches (longer keys first to avoid partial matches)
+    for key in sorted(BRANCH_LOCATIONS.keys(), key=len, reverse=True):
+        if key in t_clean:
+            return BRANCH_LOCATIONS[key]
+
+    # Check short aliases
+    for alias, canonical in BRANCH_ALIASES.items():
+        # Use word boundary-ish check for short aliases to avoid false positives
+        if re.search(r'\b' + re.escape(alias) + r'\b', t_clean):
+            return canonical
+
+    return None
+
+
+# ============================================================
 # MAIN HANDLER
 # ============================================================
 async def handle_reply(
@@ -502,21 +564,24 @@ async def handle_reply(
     contact_data: Dict[str, Any],
     conversation_history: List[Dict[str, str]],
     campaign_type: str = "generic",
+    pending_location: bool = False,
 ) -> Dict[str, Any]:
     """
     Handle a reply from a followup contact.
-    
+
     Args:
         user_text: The message text from the user
         contact_data: Dict with name, vehicle, notes, resumen from Monday
         conversation_history: List of {"role": "user"|"assistant", "content": "..."} dicts
         campaign_type: "lost_lead" | "assigned_lead" | "attended_appointment" | "generic"
-    
+        pending_location: True if we previously asked for location and are waiting for response
+
     Returns:
         {
             "reply": "Bot response text",
-            "action": "continue" | "stop" | "handoff" | "interested" | "appointment",
-            "summary": "Brief summary of the exchange"
+            "action": "continue" | "stop" | "handoff" | "interested" | "pending_location",
+            "summary": "Brief summary of the exchange",
+            "location": "Canonical branch name" (optional, only when location detected)
         }
     """
     # 1. STOP detection — only on EXPLICIT rejection
@@ -529,12 +594,27 @@ async def handle_reply(
             "summary": "Cliente pidió no ser contactado",
         }
 
-    # 2. Determine action hints
+    # 2. Determine action hints + location detection
     action = "continue"
-    if detect_handoff(user_text):
-        action = "handoff"
+    detected_location = detect_location(user_text)
+
+    if pending_location:
+        # We were waiting for a location response
+        if detected_location:
+            action = "handoff"
+        else:
+            # No location detected — AI will re-ask naturally
+            action = "pending_location"
+    elif detect_handoff(user_text):
+        if detected_location:
+            action = "handoff"  # Direct handoff — location in same message
+        else:
+            action = "pending_location"  # Need to ask for location first
     elif detect_interest(user_text):
-        action = "interested"
+        if detected_location:
+            action = "handoff"  # Interest + location → go straight to handoff
+        else:
+            action = "pending_location"  # Interest detected, ask for location
 
     # 3. Build system prompt with campaign-specific template
     _, time_str = get_mexico_time()
@@ -627,9 +707,23 @@ async def handle_reply(
     ]
     if any(w in reply_lower for w in handoff_hints):
         if action == "continue":
-            action = "handoff"
+            # AI wants to hand off but we haven't asked for location yet
+            if detected_location:
+                action = "handoff"
+            else:
+                action = "pending_location"
 
-    # 6b. CRITICAL: Detect if bot is scheduling/confirming visits (FORBIDDEN)
+    # 6b. Post-process: if AI response lists branch options, it's asking for location
+    # Count how many branch names appear in the reply
+    branch_names_in_reply = sum(
+        1 for loc in ["Tlalnepantla", "Texcoco", "Cuautitlan", "Queretaro",
+                       "Celaya", "Leon", "Guadalajara", "Tampico", "Monterrey"]
+        if loc.lower() in reply_lower
+    )
+    if branch_names_in_reply >= 3 and action != "handoff":
+        action = "pending_location"
+
+    # 6c. CRITICAL: Detect if bot is scheduling/confirming visits (FORBIDDEN)
     # If the bot confirms a time, says "te espero", gives an address, or says
     # "pasa a la oficina", replace the reply with a proper handoff message.
     scheduling_violations = [
@@ -647,7 +741,7 @@ async def handle_reply(
         "nos vemos manana", "vienes hoy", "vienes mañana",
         "lo retomamos esta semana o",
         # Giving specific addresses or locations
-        "en la sucursal de", "en selectrucks", "en la agencia",
+        "en selectrucks", "en la agencia",
         "en nuestras instalaciones",
     ]
     # Also check for time patterns like "a las 5", "a las 10:30"
@@ -656,21 +750,34 @@ async def handle_reply(
     if has_violation:
         client_name = contact_data.get("name", "").split("|")[0].strip()
         name_part = f" {client_name}" if client_name else ""
-        reply = (
-            f"Que buena noticia{name_part}! Para que te atiendan como se debe, "
-            f"le pido a uno de nuestros asesores que te contacte ahorita mismo "
-            f"y coordine todo contigo. En que horario te viene mejor?"
-        )
-        action = "handoff"
+        if detected_location:
+            reply = (
+                f"Perfecto{name_part}! En breve nos ponemos de acuerdo "
+                f"para atenderte en {detected_location}."
+            )
+            action = "handoff"
+        else:
+            reply = (
+                f"Que buena noticia{name_part}! Para apoyarte mejor, "
+                f"en cual de nuestras sucursales te gustaria que te atendamos?\n\n"
+                f"Tenemos puntos de venta en Tlalnepantla, Texcoco, Cuautitlan, "
+                f"Queretaro, Celaya, Leon, en Guadalajara (Occidente y Mariano Otero), "
+                f"Tampico y Monterrey.\n\nDime cual te queda mas comoda."
+            )
+            action = "pending_location"
 
     # 7. Generate brief summary
     summary = _summarize_exchange(user_text, reply, action)
 
-    return {
+    result = {
         "reply": reply,
         "action": action,
         "summary": summary,
     }
+    if detected_location:
+        result["location"] = detected_location
+
+    return result
 
 
 def _summarize_exchange(user_text: str, bot_reply: str, action: str) -> str:
@@ -680,6 +787,8 @@ def _summarize_exchange(user_text: str, bot_reply: str, action: str) -> str:
         return f"STOP: Cliente pidió no ser contactado. Dijo: '{t}'"
     if action == "handoff":
         return f"HANDOFF: Cliente pidió asesor. Dijo: '{t}'"
+    if action == "pending_location":
+        return f"UBICACION: Bot preguntó sucursal preferida. Dijo: '{t}'"
     if action == "interested":
         return f"INTERESADO: Cliente mostró interés. Dijo: '{t}'"
     return f"Respondió: '{t}'"

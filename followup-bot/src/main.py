@@ -30,7 +30,7 @@ from src.memory_store import MemoryStore
 from src.monday_service import monday_followup
 from src.monday_queue import MondayQueue
 from src.sender_service import sender, is_office_hours, get_mexico_now, get_today_schedule
-from src.conversation_logic import handle_reply, detect_stop, detect_campaign_type, generate_conversation_resumen
+from src.conversation_logic import handle_reply, detect_stop, detect_campaign_type, generate_conversation_resumen, detect_location
 from src.phone_utils import normalize_phone
 from src.dashboard import DASHBOARD_HTML
 from src.media_processor import process_media_message
@@ -608,8 +608,11 @@ async def _process_reply(phone: str, text: str):
     # Load conversation history from SQLite
     session = await state.memory.get(phone)
     history = []
-    if session and session.get("context", {}).get("history"):
-        history = session["context"]["history"]
+    pending_location = False
+    if session:
+        if session.get("context", {}).get("history"):
+            history = session["context"]["history"]
+        pending_location = session.get("context", {}).get("pending_location", False)
 
     # Detect campaign type from Monday group
     campaign_type = detect_campaign_type(contact.get("group_title", ""))
@@ -641,6 +644,7 @@ async def _process_reply(phone: str, text: str):
         contact_data=contact_data,
         conversation_history=history,
         campaign_type=campaign_type,
+        pending_location=pending_location,
     )
 
     reply_text = result["reply"]
@@ -678,8 +682,11 @@ async def _process_reply(phone: str, text: str):
     if len(history) > 20:
         history = history[-20:]
 
-    # Save to SQLite
-    await state.memory.upsert(phone, action, {"history": history})
+    # Save to SQLite (include pending_location flag if waiting for location)
+    context_to_save = {"history": history}
+    if action == "pending_location":
+        context_to_save["pending_location"] = True
+    await state.memory.upsert(phone, action, context_to_save)
 
     # Handle unknown contacts — Propuesta 3: create orphan in Monday
     if unknown_contact:
@@ -727,16 +734,20 @@ async def _process_reply(phone: str, text: str):
         "handoff": "Handoff",
         "interested": "Interesado",
         "continue": "Respondió",
+        "pending_location": "Interesado",
     }
     new_status = status_map.get(action, "Respondió")
 
-    note_icons = {"stop": "🛑", "handoff": "🤝", "interested": "🟢", "continue": "💬"}
+    note_icons = {"stop": "🛑", "handoff": "🤝", "interested": "🟢", "continue": "💬", "pending_location": "📍"}
     icon = note_icons.get(action, "💬")
 
     if action == "continue":
         note_body = f"{icon} Cliente: {text[:200]}\n\nBot: {reply_text[:200]}\n\nResumen: {resumen}" if resumen else f"{icon} {summary}"
     else:
         note_body = f"{icon} {summary}\n\nResumen: {resumen}" if resumen else f"{icon} {summary}"
+
+    # Extract detected location from AI result (if any)
+    detected_location = result.get("location")
 
     if queue:
         # Queue updates (guaranteed delivery even if Monday is down)
@@ -750,6 +761,16 @@ async def _process_reply(phone: str, text: str):
             "item_id": item_id,
             "body": note_body,
         })
+        # Update location dropdown in Monday if detected
+        if detected_location:
+            await queue.enqueue(item_id, "update_status", {
+                "item_id": item_id,
+                "status": new_status,
+                "extra_cols": {
+                    monday_followup.location_col_id: {"labels": [detected_location]}
+                },
+            })
+            logger.info(f"📍 Location '{detected_location}' queued for {phone[:6]}***: item={item_id}")
         # Update local cache immediately
         await queue.update_cached_contact_fields(phone, {
             "status": new_status,
@@ -761,6 +782,12 @@ async def _process_reply(phone: str, text: str):
         try:
             await monday_followup.update_reply(item_id, new_status, summary, resumen=resumen)
             await monday_followup.add_note(item_id, note_body)
+            # Update location dropdown in Monday if detected
+            if detected_location:
+                await monday_followup.update_status(item_id, new_status, {
+                    monday_followup.location_col_id: {"labels": [detected_location]}
+                })
+                logger.info(f"📍 Location '{detected_location}' updated for {phone[:6]}***: item={item_id}")
             logger.info(f"✅ Monday updated for {phone[:6]}***: item={item_id}, action={action}")
         except Exception as e:
             logger.error(f"❌ Monday update FAILED for {phone[:6]}***: item={item_id}, action={action}, error={e}")
@@ -772,7 +799,8 @@ async def _process_reply(phone: str, text: str):
         # Persist to SQLite so handoff survives restarts
         await state.memory.silence_user(phone, silence_until, reason="handoff")
         if settings.OWNER_PHONE:
-            alert = f"🤝 HANDOFF en seguimiento:\n{contact['name']}\nTel: {phone}\nDijo: {text[:200]}"
+            location_line = f"\n📍 Sucursal: {detected_location}" if detected_location else ""
+            alert = f"🤝 HANDOFF en seguimiento:\n{contact['name']}\nTel: {phone}{location_line}\nDijo: {text[:200]}"
             await _send_reply(settings.OWNER_PHONE, alert)
     elif action == "interested":
         if settings.OWNER_PHONE:
