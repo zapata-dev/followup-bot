@@ -500,6 +500,11 @@ def detect_handoff(text: str) -> bool:
 # ============================================================
 # BRANCH/LOCATION DETECTION
 # ============================================================
+
+# Campaign types donde se pregunta sucursal antes del handoff.
+# Solo para leads que NO han tenido cita ni vendedor asignado.
+LOCATION_FLOW_CAMPAIGNS = {"lost_lead", "generic"}
+
 BRANCH_LOCATIONS = {
     "tlalnepantla": "Tlalnepantla",
     "texcoco": "Texcoco",
@@ -596,25 +601,26 @@ async def handle_reply(
 
     # 2. Determine action hints + location detection
     action = "continue"
-    detected_location = detect_location(user_text)
+    ask_location = campaign_type in LOCATION_FLOW_CAMPAIGNS
+    detected_location = detect_location(user_text) if ask_location else None
 
-    if pending_location:
-        # We were waiting for a location response
+    if pending_location and ask_location:
+        # We were waiting for a location response (only for early-stage leads)
         if detected_location:
             action = "handoff"
         else:
             # No location detected — AI will re-ask naturally
             action = "pending_location"
     elif detect_handoff(user_text):
-        if detected_location:
-            action = "handoff"  # Direct handoff — location in same message
-        else:
+        if ask_location and not detected_location:
             action = "pending_location"  # Need to ask for location first
-    elif detect_interest(user_text):
-        if detected_location:
-            action = "handoff"  # Interest + location → go straight to handoff
         else:
+            action = "handoff"  # Direct handoff (advanced leads or location already detected)
+    elif detect_interest(user_text):
+        if ask_location and not detected_location:
             action = "pending_location"  # Interest detected, ask for location
+        else:
+            action = "interested"  # Advanced leads: mark as interested, no forced handoff
 
     # 3. Build system prompt with campaign-specific template
     _, time_str = get_mexico_time()
@@ -666,6 +672,15 @@ async def handle_reply(
     if presentation_hint:
         system_prompt += presentation_hint
 
+    # For advanced leads: override location rules — no branch questions
+    if not ask_location:
+        system_prompt += (
+            "\n⚠️ CRITICO: Este cliente ya tiene vendedor asignado, ya visito "
+            "o es servicio al cliente. NO le preguntes a que sucursal quiere ir. "
+            "Si necesita handoff, transfiere directo al asesor: "
+            "'Le pido a un asesor que te contacte para coordinar todo.'\n"
+        )
+
     # Warn AI when vehicle data is missing — prevent hallucinating models
     if not vehicle:
         system_prompt += (
@@ -707,21 +722,21 @@ async def handle_reply(
     ]
     if any(w in reply_lower for w in handoff_hints):
         if action == "continue":
-            # AI wants to hand off but we haven't asked for location yet
-            if detected_location:
-                action = "handoff"
-            else:
+            if ask_location and not detected_location:
                 action = "pending_location"
+            else:
+                action = "handoff"
 
     # 6b. Post-process: if AI response lists branch options, it's asking for location
-    # Count how many branch names appear in the reply
-    branch_names_in_reply = sum(
-        1 for loc in ["Tlalnepantla", "Texcoco", "Cuautitlan", "Queretaro",
-                       "Celaya", "Leon", "Guadalajara", "Tampico", "Monterrey"]
-        if loc.lower() in reply_lower
-    )
-    if branch_names_in_reply >= 3 and action != "handoff":
-        action = "pending_location"
+    # Only relevant for early-stage leads where we ask for location
+    if ask_location:
+        branch_names_in_reply = sum(
+            1 for loc in ["Tlalnepantla", "Texcoco", "Cuautitlan", "Queretaro",
+                           "Celaya", "Leon", "Guadalajara", "Tampico", "Monterrey"]
+            if loc.lower() in reply_lower
+        )
+        if branch_names_in_reply >= 3 and action != "handoff":
+            action = "pending_location"
 
     # 6c. CRITICAL: Detect if bot is scheduling/confirming visits (FORBIDDEN)
     # If the bot confirms a time, says "te espero", gives an address, or says
@@ -750,13 +765,8 @@ async def handle_reply(
     if has_violation:
         client_name = contact_data.get("name", "").split("|")[0].strip()
         name_part = f" {client_name}" if client_name else ""
-        if detected_location:
-            reply = (
-                f"Perfecto{name_part}! En breve nos ponemos de acuerdo "
-                f"para atenderte en {detected_location}."
-            )
-            action = "handoff"
-        else:
+        if ask_location and not detected_location:
+            # Early-stage lead: ask for branch before handoff
             reply = (
                 f"Que buena noticia{name_part}! Para apoyarte mejor, "
                 f"en cual de nuestras sucursales te gustaria que te atendamos?\n\n"
@@ -765,6 +775,14 @@ async def handle_reply(
                 f"Tampico y Monterrey.\n\nDime cual te queda mas comoda."
             )
             action = "pending_location"
+        else:
+            # Advanced lead or location already known: direct handoff
+            loc_str = f" en {detected_location}" if detected_location else ""
+            reply = (
+                f"Perfecto{name_part}! En breve le pido a nuestro equipo "
+                f"que se ponga de acuerdo contigo para atenderte{loc_str}."
+            )
+            action = "handoff"
 
     # 7. Generate brief summary
     summary = _summarize_exchange(user_text, reply, action)
