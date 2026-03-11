@@ -800,11 +800,33 @@ async def _process_reply(phone: str, text: str):
         await state.memory.silence_user(phone, silence_until, reason="handoff")
         if settings.OWNER_PHONE:
             location_line = f"\n📍 Sucursal: {detected_location}" if detected_location else ""
-            alert = f"🤝 HANDOFF en seguimiento:\n{contact['name']}\nTel: {phone}{location_line}\nDijo: {text[:200]}"
+            vehicle_line = f"\n🚛 Vehículo: {contact.get('vehicle', '')}" if contact.get('vehicle') else ""
+            notes_line = f"\n📋 Notas Monday: {contact.get('notes', '')}" if contact.get('notes') else ""
+            resumen_line = f"\n💬 Resumen conversación: {resumen}" if resumen else ""
+            alert = (
+                f"🤝 HANDOFF en seguimiento:\n"
+                f"{contact['name']}\n"
+                f"Tel: {phone}"
+                f"{location_line}"
+                f"{vehicle_line}"
+                f"{notes_line}"
+                f"{resumen_line}\n"
+                f"Último mensaje: {text[:200]}"
+            )
             await _send_reply(settings.OWNER_PHONE, alert)
     elif action == "interested":
         if settings.OWNER_PHONE:
-            alert = f"🟢 LEAD INTERESADO en seguimiento:\n{contact['name']}\nVehículo: {contact.get('vehicle', 'N/A')}\nDijo: {text[:200]}"
+            notes_line_i = f"\n📋 Notas Monday: {contact.get('notes', '')}" if contact.get('notes') else ""
+            resumen_line_i = f"\n💬 Resumen conversación: {resumen}" if resumen else ""
+            alert = (
+                f"🟢 LEAD INTERESADO en seguimiento:\n"
+                f"{contact['name']}\n"
+                f"Tel: {phone}\n"
+                f"🚛 Vehículo: {contact.get('vehicle', 'N/A')}"
+                f"{notes_line_i}"
+                f"{resumen_line_i}\n"
+                f"Último mensaje: {text[:200]}"
+            )
             await _send_reply(settings.OWNER_PHONE, alert)
 
 
