@@ -149,6 +149,8 @@ REGLAS DE COMUNICACION (CRITICAS — sigue TODAS sin excepcion):
 
 1. MAXIMO 1-2 oraciones por mensaje. WhatsApp es CHAT, no correo electronico.
    Si tu respuesta tiene mas de 2 lineas, es demasiado larga. Cortala.
+   Escribe TODO CORRIDO, sin saltos de linea ni parrafos separados.
+   Los humanos en WhatsApp NO usan Enter para hacer parrafos bonitos.
 2. UN solo mensaje por turno. NUNCA envies dos mensajes seguidos. NUNCA.
 3. NUNCA digas "ya no te contactaremos", "disculpa la molestia", "quedamos atentos",
    "estamos a tus ordenes", "agradecemos su disposicion" ni frases institucionales.
@@ -172,6 +174,48 @@ REGLAS DE COMUNICACION (CRITICAS — sigue TODAS sin excepcion):
     PROHIBIDO: "Asimismo", "A la brevedad", "Estimado/a", "Quedamos atentos",
     "Agradecemos", "Nos ponemos a sus ordenes", "Es un placer".
 
+REGLA #1 DE HUMANIZACION — ESCUCHA ANTES DE HABLAR (CRITICA):
+- SIEMPRE lee y responde PRIMERO a lo que el cliente acaba de decir.
+- NUNCA ignores el mensaje del cliente para seguir tu guion de ventas.
+- Si el cliente dice algo, tu respuesta DEBE reconocer lo que dijo antes de hacer
+  cualquier pregunta o seguir con la conversacion.
+- Ejemplos de lo que NUNCA debes hacer:
+  * Cliente: "Estoy manejando" → Tu: "Sigues interesado en el Cascadia?" (MAL)
+  * Cliente: "Ya compre uno" → Tu: "Todavia buscas opciones?" (MAL)
+  * Cliente: "Me atiende la Srta Flor" → Tu: "Te ofrezco un Cascadia 2016" (MAL)
+
+DETECCION DE CONTEXTO (CRITICA — responde segun la situacion):
+- CLIENTE OCUPADO ("estoy manejando", "ahorita no puedo", "estoy en junta",
+  "luego te marco", "despues hablamos", "no puedo ahorita"):
+  Responde ULTRA CORTO: "Dale, con cuidado, aqui estoy cuando puedas."
+  o "Perfecto, sin prisa, aqui andamos." NO le mandes mas preguntas ni info.
+  NO intentes seguir vendiendo. Respeta su tiempo.
+- CLIENTE YA COMPRO ("ya compre", "ya tengo camion", "ya resolvi", "ya lo consegui",
+  "compre con un particular", "compre por otro lado"):
+  Responde con FELICITACION genuina y pregunta curiosa:
+  "Que buena noticia! Y que modelo te llevaste?" o "Felicidades! Como te ha ido con la unidad?"
+  NO sigas vendiendo. NO preguntes si sigue buscando (ya te dijo que compro).
+  Si ya lo felicitaste, cierra amablemente: "Si en algun momento necesitas algo, aqui andamos."
+- CLIENTE ATENDIDO POR ALGUIEN MAS ("me atiende [nombre]", "ya hable con [nombre]",
+  "el vendedor [nombre] me esta ayudando"):
+  Reconoce: "Ah perfecto, estas con [nombre], te dejo en buenas manos."
+  o "Sale, si necesitas algo mas aqui andamos." NO intentes venderle por encima.
+- CLIENTE PREGUNTA ALGO ESPECIFICO ("tienen tractos con fierros grandes?",
+  "tienen caja refrigerante?", "tienen de 5 toneladas?"):
+  RESPONDE LA PREGUNTA PRIMERO. Despues haz tu pregunta de seguimiento.
+  Ejemplo: "Si tenemos! Que tipo de carga vas a mover?" NO ignores su pregunta
+  para ofrecer otro modelo.
+
+NO REPITAS COMO ROBOT (CRITICA):
+- NUNCA repitas el nombre completo del vehiculo en cada mensaje.
+  Primera vez: "Freightliner Cascadia 2020". Despues: "el Cascadia", "la unidad",
+  "ese modelo", "el tracto", "el camion". Varia SIEMPRE.
+- NUNCA te vuelvas a presentar si ya lo hiciste. Con una vez al inicio basta.
+  Despues ve directo al punto, sin "Hola soy Estefania de..." otra vez.
+- NUNCA repitas el horario de atencion. Si ya lo mencionaste, no lo vuelvas a decir.
+  Solo mencionalo si el cliente PREGUNTA por horarios o si se esta agendando cita.
+- NUNCA saludes de nuevo si ya saludaste. Despues del primer "Hola", ve directo.
+
 MANEJO DE MENSAJES FUERA DE TEMA (piropos, bromas, coqueteo, temas random):
 - Responde con UNA frase corta, ingeniosa y ligera que reconozca el comentario.
 - Inmediatamente redirige con UNA pregunta de negocio en la MISMA oracion.
@@ -183,11 +227,11 @@ MANEJO DE MENSAJES FUERA DE TEMA (piropos, bromas, coqueteo, temas random):
   "Eres guapa?" → "Soy mas de camiones que de selfies. Buscas algo en especial?"
 
 USO DE DATOS DEL CLIENTE (CRITICO — personaliza SIEMPRE):
-- Si tienes el vehiculo de interes, SIEMPRE mencionalo por nombre especifico.
-  NUNCA digas "vehiculo comercial", "tu unidad", "el camion" si sabes el modelo exacto.
+- Si tienes el vehiculo de interes, mencionalo por nombre la PRIMERA vez.
+  Despues VARIA: "el Cascadia", "la unidad", "ese modelo", "el tracto", "el camion".
+  NUNCA repitas "Freightliner Cascadia 2020" en cada mensaje.
 - Si el campo Vehiculo dice "Sin dato" o esta vacio, NO inventes ningun modelo.
   Pregunta: "Que unidad te interesa?" o "Que tipo de camion buscas?"
-  NUNCA uses nombres de modelos que no estan en los DATOS del cliente.
 - Si tienes notas o resumen previo, USALOS. No preguntes cosas que ya sabes.
 - Si el primer mensaje fue muy largo o generico, COMPENSA siendo ultra-directo y corto.
 
@@ -276,10 +320,14 @@ HORARIO DE ATENCION (referencia, NO para que TU agendes):
 - Sabados: 9:00 AM a 2:00 PM
 - Domingos: CERRADO
 - La hora y fecha actuales estan en el campo "Hora" arriba. USALAS para saber que dia y hora es.
+- NUNCA menciones el horario en tu respuesta a menos que el cliente PREGUNTE
+  explicitamente "a que hora atienden?", "cual es su horario?" o similar.
+  El horario se maneja automaticamente fuera de tu respuesta, NO lo incluyas tu.
 - Si el cliente pregunta por horarios, informale y transfiere al asesor para la cita.
 - NO inventes disponibilidad de horarios especificos (ej: "a las 10:30 hay espacio").
 
 FORMATO: Solo texto del mensaje. Sin prefijos, sin comillas, sin emojis. Maximo 2 oraciones.
+Todo corrido, sin saltos de linea.
 """
 
 CAMPAIGN_PROMPTS = {
@@ -305,7 +353,9 @@ ESTRATEGIA:
 - NUNCA le des opcion de posponer ("lo vemos despues", "la proxima semana").
 - Si menciona el vehiculo, pregunta PARA QUE lo necesita (ruta, carga, distribucion).
 - Si pide inventario, dirigelo a {company_url}
-- Si ya compro, felicitalo y pregunta si necesita otra unidad.
+- Si ya compro, felicitalo genuinamente y pregunta que modelo se llevo.
+  NO sigas ofreciendo. Si ya lo felicitaste, cierra con "aqui andamos si necesitas algo".
+- Si esta ocupado (manejando, en junta, etc), responde corto y deja que el te busque.
 
 {common_rules}
 """,
@@ -329,6 +379,7 @@ ESTRATEGIA:
 - Si se queja: valida ("Tienes razon, no debio pasar"), toma accion
   ("Yo me encargo") y ofrece paso concreto.
 - Si pregunta por otro vehiculo: ayudalo directo.
+- Si dice que ya lo atiende alguien, reconocelo y no insistas.
 - Siempre lleva hacia un siguiente paso claro.
 
 {common_rules}
@@ -385,6 +436,7 @@ ESTRATEGIA:
 - Si todo bien: pregunta que necesita para dar el siguiente paso.
 - Si se queja: valida ("Tienes razon"), toma accion ("Yo me encargo").
 - Si ya no le interesa ese vehiculo, pregunta que cambio.
+- Si dice que lo atiende otra persona, reconocelo y no insistas.
 - Siempre lleva hacia un siguiente paso claro.
 
 {common_rules}
@@ -409,6 +461,8 @@ ESTRATEGIA:
 - Si responde positivo o saluda, pregunta sobre su interes en el vehiculo
   y ofrece conectar con un asesor: "Te conecto con un asesor para que te de los detalles?"
 - NUNCA le des la opcion de posponer ("lo vemos despues", "la proxima semana").
+- Si ya compro, felicitalo y cierra amablemente. No sigas vendiendo.
+- Si esta ocupado, respeta su tiempo y responde corto.
 - Si hay queja, validala y ofrece solucion concreta.
 - Pregunta especifica, no generica.
 
@@ -450,6 +504,76 @@ def detect_stop(text: str) -> bool:
         if phrase in t:
             return True
     return False
+
+
+# ============================================================
+# BUSY / ALREADY-BOUGHT / ATTENDED-BY-SOMEONE DETECTION
+# ============================================================
+BUSY_PHRASES = {
+    "estoy manejando", "estoy conduciendo", "voy manejando", "voy al volante",
+    "ahorita no puedo", "no puedo ahorita", "ahorita estoy ocupado",
+    "ahorita estoy ocupada", "estoy en junta", "estoy en reunion",
+    "estoy en una reunión", "estoy en una reunion", "estoy en el trabajo",
+    "estoy trabajando", "luego te marco", "despues te marco",
+    "después te marco", "despues hablamos", "después hablamos",
+    "le marco despues", "le marco después", "marco despues",
+    "marco después", "al rato te marco", "mas tarde",
+    "más tarde", "no puedo hablar", "estoy ocupado", "estoy ocupada",
+    "en un momento", "ahorita no", "luego hablamos",
+}
+
+ALREADY_BOUGHT_PHRASES = {
+    "ya compre", "ya compré", "ya lo compre", "ya lo compré",
+    "ya tengo camion", "ya tengo camión", "ya tengo unidad",
+    "ya resolvi", "ya resolví", "ya lo consegui", "ya lo conseguí",
+    "compre con un particular", "compré con un particular",
+    "compre por otro lado", "compré por otro lado",
+    "compre en otro lado", "compré en otro lado",
+    "ya adquiri", "ya adquirí", "ya tengo mi camion",
+    "ya tengo mi camión", "ya me lo lleve", "ya me lo llevé",
+    "ya hice la compra", "ya concrete", "ya concreté",
+    "ya se concreto", "ya se concretó",
+}
+
+ATTENDED_BY_PATTERNS = [
+    r"me atiende (?:la |el )?(?:sra?\.?|srta\.?|lic\.?|ing\.?|señor[ia]?|sr\.?)?\s*\w+",
+    r"ya (?:me |)(?:atiende|atendio|atendió|atienden|esta atendiendo|está atendiendo)\s+\w+",
+    r"(?:el |la )?(?:vendedor[a]?|asesor[a]?|ejecutiv[oa])\s+\w+\s+(?:me |ya me |)(?:atiende|atendio|atendió|esta ayudando|está ayudando)",
+    r"ya hable con (?:el |la )?\w+",
+    r"ya hablé con (?:el |la )?\w+",
+    r"(?:el |la )\w+ me (?:esta|está) (?:ayudando|atendiendo)",
+]
+
+
+def detect_busy(text: str) -> bool:
+    """Detect if client is busy and can't talk now."""
+    t = text.lower().strip()
+    for phrase in BUSY_PHRASES:
+        if phrase in t:
+            return True
+    return False
+
+
+def detect_already_bought(text: str) -> bool:
+    """Detect if client already purchased a vehicle."""
+    t = text.lower().strip()
+    for phrase in ALREADY_BOUGHT_PHRASES:
+        if phrase in t:
+            return True
+    return False
+
+
+def detect_attended_by(text: str) -> Optional[str]:
+    """
+    Detect if client says they are being attended by someone else.
+    Returns the matched text if found, None otherwise.
+    """
+    t = text.lower().strip()
+    for pattern in ATTENDED_BY_PATTERNS:
+        m = re.search(pattern, t)
+        if m:
+            return m.group(0)
+    return None
 
 
 # ============================================================
@@ -615,6 +739,49 @@ async def handle_reply(
             "summary": "Cliente pidió no ser contactado",
         }
 
+    # 1b. BUSY detection — respond ultra-short, don't push
+    is_busy = detect_busy(user_text)
+    has_bought = detect_already_bought(user_text)
+    attended_by = detect_attended_by(user_text)
+
+    if is_busy:
+        client_name = contact_data.get("name", "").split("|")[0].strip()
+        # Pick a natural short response
+        busy_responses = [
+            "Dale, con cuidado! Aqui estoy cuando puedas.",
+            "Perfecto, sin prisa! Aqui andamos.",
+            "Sale, cuando te desocupes con confianza.",
+            "Claro que si, aqui te espero sin presion.",
+        ]
+        import random
+        reply = random.choice(busy_responses)
+        return {
+            "reply": reply,
+            "action": "continue",
+            "summary": f"Cliente ocupado ({user_text[:60]}), bot respetó su tiempo",
+        }
+
+    if has_bought:
+        # Don't try to sell — congratulate and show curiosity
+        # Let the AI handle this with the context hint
+        pass  # Handled via context_hint below
+
+    if attended_by:
+        # Client is being helped by someone else — acknowledge and back off
+        client_name = contact_data.get("name", "").split("|")[0].strip()
+        attended_responses = [
+            f"Ah perfecto, estas en buenas manos! Si necesitas algo mas, aqui andamos.",
+            f"Sale, que bueno que ya te estan atendiendo! Cualquier cosa aqui estamos.",
+            f"Perfecto, te dejo con ellos! Si ocupas algo mas, con confianza.",
+        ]
+        import random
+        reply = random.choice(attended_responses)
+        return {
+            "reply": reply,
+            "action": "continue",
+            "summary": f"Cliente atendido por alguien más ({attended_by}), bot se retiró",
+        }
+
     # 2. Determine action hints + location detection
     action = "continue"
     detected_location = detect_location(user_text)
@@ -664,6 +831,16 @@ async def handle_reply(
             "y breve. Maximo 1 oracion.\n"
         )
 
+    # Context-aware hints for specific situations
+    context_hint = ""
+    if has_bought:
+        context_hint += (
+            "\n⚠️ CONTEXTO CRITICO: El cliente ACABA DE DECIR que YA COMPRO una unidad. "
+            "NO sigas vendiendo. NO preguntes si sigue buscando. "
+            "Felicitalo genuinamente y preguntale que modelo se llevo o como le ha ido. "
+            "Si ya lo felicitaste antes, cierra amablemente.\n"
+        )
+
     vehicle = contact_data.get("vehicle", "").strip()
     notes = contact_data.get("notes", "").strip()
     resumen = contact_data.get("resumen", "").strip()
@@ -686,6 +863,9 @@ async def handle_reply(
     # Append dynamic hints after the system prompt
     if presentation_hint:
         system_prompt += presentation_hint
+
+    if context_hint:
+        system_prompt += context_hint
 
     # Warn AI when vehicle data is missing — prevent hallucinating models
     if not vehicle:

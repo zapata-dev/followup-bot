@@ -108,25 +108,25 @@ class SenderService:
         self.company_url = os.getenv("COMPANY_URL", "")
 
         # Campaign-specific templates (derived from Monday group name keywords)
-        # IMPORTANT: Keep templates SHORT (1-3 lines max). WhatsApp = chat, not email.
-        # Each template ends with ONE clear question to invite response.
+        # IMPORTANT: Keep templates SHORT (max 2 lines). WhatsApp = chat, not email.
+        # Write them ALL CORRIDO (no line breaks). End with ONE clear question.
+        # Sound like a real person texting, not a corporate email.
         self.campaign_templates = {
             "lost_lead": os.getenv("TEMPLATE_LOST_LEAD", (
-                "Hola {nombre}, te escribo de {company_name}. "
-                "Hace un tiempo preguntaste por el {vehiculo} y queria saber "
-                "si sigues evaluando esa opcion o si ya resolviste tu compra."
+                "Hola {nombre}, soy {bot_name} de {company_name}. "
+                "Hace tiempo preguntaste por el {vehiculo}, sigues buscando o ya resolviste?"
             )),
             "assigned_lead": os.getenv("TEMPLATE_ASSIGNED_LEAD", (
                 "Hola {nombre}, soy {bot_name} de {company_name}. "
-                "Te pudieron resolver tu consulta sobre el {vehiculo}?"
+                "Te pudieron resolver lo del {vehiculo}?"
             )),
             "attended_appointment": os.getenv("TEMPLATE_ATTENDED_APPOINTMENT", (
-                "Hola {nombre}, te escribo de {company_name}. "
-                "Que tal te parecio el {vehiculo} cuando viniste a verlo?"
+                "Hola {nombre}, soy {bot_name} de {company_name}. "
+                "Que tal te parecio el {vehiculo} cuando lo viste?"
             )),
             "customer_service": os.getenv("TEMPLATE_CUSTOMER_SERVICE", (
                 "Hola {nombre}, soy {bot_name} de {company_name}. "
-                "Vi que te interesa el {vehiculo}, como te han atendido con esa unidad?"
+                "Como te ha ido con el {vehiculo}?"
             )),
         }
 
