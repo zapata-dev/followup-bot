@@ -820,12 +820,47 @@ async def _process_reply(phone: str, text: str):
         # Persist to SQLite so handoff survives restarts
         await state.memory.silence_user(phone, silence_until, reason="handoff")
         if settings.OWNER_PHONE:
-            location_line = f"\n📍 Sucursal: {detected_location}" if detected_location else ""
-            alert = f"🤝 HANDOFF en seguimiento:\n{contact['name']}\nTel: {phone}{location_line}\nDijo: {text[:200]}"
+            # Build a rich handoff alert with all useful context
+            now_mx = get_mexico_now()
+            fecha = now_mx.strftime("%d/%m/%Y %I:%M %p")
+            vehicle_info = contact.get("vehicle", "").strip()
+            campaign_group = contact.get("group_title", "").strip()
+
+            alert_lines = [f"🤝 HANDOFF en seguimiento"]
+            alert_lines.append(f"📅 {fecha}")
+            alert_lines.append(f"👤 {contact['name']}")
+            alert_lines.append(f"📞 {phone}")
+            if detected_location:
+                alert_lines.append(f"📍 Ubicacion: {detected_location}")
+            if vehicle_info:
+                alert_lines.append(f"🚛 Vehiculo: {vehicle_info}")
+            if campaign_group:
+                alert_lines.append(f"📋 Campaña: {campaign_group}")
+            if resumen:
+                alert_lines.append(f"📝 Resumen: {resumen}")
+            elif text and text.strip():
+                alert_lines.append(f"💬 Ultimo mensaje: {text[:200]}")
+
+            alert = "\n".join(alert_lines)
             await _send_reply(settings.OWNER_PHONE, alert)
     elif action == "interested":
         if settings.OWNER_PHONE:
-            alert = f"🟢 LEAD INTERESADO en seguimiento:\n{contact['name']}\nVehículo: {contact.get('vehicle', 'N/A')}\nDijo: {text[:200]}"
+            now_mx = get_mexico_now()
+            fecha = now_mx.strftime("%d/%m/%Y %I:%M %p")
+            vehicle_info = contact.get("vehicle", "").strip()
+
+            alert_lines = [f"🟢 LEAD INTERESADO en seguimiento"]
+            alert_lines.append(f"📅 {fecha}")
+            alert_lines.append(f"👤 {contact['name']}")
+            alert_lines.append(f"📞 {phone}")
+            if vehicle_info:
+                alert_lines.append(f"🚛 Vehiculo: {vehicle_info}")
+            if resumen:
+                alert_lines.append(f"📝 Resumen: {resumen}")
+            elif text and text.strip():
+                alert_lines.append(f"💬 Ultimo mensaje: {text[:200]}")
+
+            alert = "\n".join(alert_lines)
             await _send_reply(settings.OWNER_PHONE, alert)
 
 
