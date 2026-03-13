@@ -820,13 +820,81 @@ async def _process_reply(phone: str, text: str):
         # Persist to SQLite so handoff survives restarts
         await state.memory.silence_user(phone, silence_until, reason="handoff")
         if settings.OWNER_PHONE:
-            location_line = f"\n📍 Sucursal: {detected_location}" if detected_location else ""
-            alert = f"🤝 HANDOFF en seguimiento:\n{contact['name']}\nTel: {phone}{location_line}\nDijo: {text[:200]}"
+            alert = _build_alert(
+                title="🤝 HANDOFF en seguimiento",
+                contact=contact, phone=phone, text=text,
+                resumen=resumen, history=history,
+                detected_location=detected_location,
+            )
             await _send_reply(settings.OWNER_PHONE, alert)
     elif action == "interested":
         if settings.OWNER_PHONE:
-            alert = f"🟢 LEAD INTERESADO en seguimiento:\n{contact['name']}\nVehículo: {contact.get('vehicle', 'N/A')}\nDijo: {text[:200]}"
+            alert = _build_alert(
+                title="🟢 LEAD INTERESADO en seguimiento",
+                contact=contact, phone=phone, text=text,
+                resumen=resumen, history=history,
+                detected_location=None,
+            )
             await _send_reply(settings.OWNER_PHONE, alert)
+
+
+def _build_alert(
+    title: str,
+    contact: dict,
+    phone: str,
+    text: str,
+    resumen: str,
+    history: list,
+    detected_location: Optional[str],
+) -> str:
+    """Build a rich WhatsApp alert for owner with all useful context."""
+    now_mx = get_mexico_now()
+    fecha = now_mx.strftime("%d/%m/%Y %I:%M %p")
+    vehicle_info = contact.get("vehicle", "").strip()
+    campaign_group = contact.get("group_title", "").strip()
+    item_id = contact.get("item_id", "")
+    board_id = monday_followup.board_id if monday_followup.is_configured() else ""
+
+    alert_lines = [title]
+    alert_lines.append(f"📅 {fecha}")
+    alert_lines.append(f"👤 {contact['name']}")
+    alert_lines.append(f"📞 {phone}")
+    if detected_location:
+        alert_lines.append(f"📍 Ubicacion: {detected_location}")
+    if vehicle_info:
+        alert_lines.append(f"🚛 Vehiculo: {vehicle_info}")
+    if campaign_group:
+        alert_lines.append(f"📋 Campaña: {campaign_group}")
+
+    # Monday direct link
+    if item_id and board_id:
+        monday_url = f"https://view.monday.com/board/{board_id}/pulses/{item_id}"
+        alert_lines.append(f"🔗 Monday: {monday_url}")
+
+    # AI-generated resumen
+    if resumen:
+        alert_lines.append(f"📝 Resumen: {resumen}")
+
+    # Last 2-3 exchanges from conversation history so the advisor
+    # knows exactly where to pick up the conversation
+    recent_msgs = []
+    # Include the current exchange (user text + bot would have replied)
+    all_msgs = list(history) if history else []
+    # Take last 6 messages (3 exchanges) from history + current user text
+    tail = all_msgs[-6:] if len(all_msgs) > 6 else all_msgs
+    for msg in tail:
+        role_label = "Cliente" if msg.get("role") == "user" else "Bot"
+        content = msg.get("content", "")[:150]
+        recent_msgs.append(f"  {role_label}: {content}")
+    # Add the current message that triggered the alert
+    if text and text.strip():
+        recent_msgs.append(f"  Cliente: {text[:150]}")
+
+    if recent_msgs:
+        alert_lines.append("💬 Conversacion:")
+        alert_lines.extend(recent_msgs)
+
+    return "\n".join(alert_lines)
 
 
 async def _send_reply(phone: str, text: str, slow: bool = False):
