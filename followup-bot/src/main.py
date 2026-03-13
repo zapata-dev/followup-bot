@@ -255,6 +255,13 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("ℹ️ Monday Queue disabled or Monday not configured")
 
+    # Auto-resume scheduler — resumes interrupted campaigns when office hours start
+    sender.start_auto_resume_scheduler(
+        memory_store=state.memory,
+        monday_queue=state.monday_queue,
+        bot_sent_ids=state.bot_sent_ids,
+    )
+
     logger.info(f"✅ Evolution instance: {settings.EVO_INSTANCE}")
     logger.info(f"✅ Bot identity: {settings.BOT_NAME} @ {settings.COMPANY_NAME}")
     logger.info("🟢 Followup Bot ready!")
@@ -271,6 +278,8 @@ async def lifespan(app: FastAPI):
         await state.http_client.aclose()
     if state._cache_sync_task:
         state._cache_sync_task.cancel()
+    if sender._auto_resume_task:
+        sender._auto_resume_task.cancel()
 
 
 app = FastAPI(title="Followup Bot", lifespan=lifespan)
@@ -658,18 +667,30 @@ async def _process_reply(phone: str, text: str):
         f"   Reply: {reply_text[:300]}"
     )
 
-    # Off-hours: add schedule notice to reply (except STOP responses)
-    # Configurable via env vars: OFF_HOURS_MSG_SUNDAY, OFF_HOURS_MSG_SATURDAY, OFF_HOURS_MSG_WEEKNIGHT
+    # Off-hours: add schedule notice ONLY on the FIRST reply in this conversation.
+    # Avoids repeating "Nuestro horario es de 9am a 6pm" on every single message
+    # which sounds robotic. Only shown once when there's no prior conversation.
     if _off_hours and action != "stop":
-        now_mx = get_mexico_now()
-        if now_mx.weekday() == 6:  # Sunday
-            schedule_note = settings.OFF_HOURS_MSG_SUNDAY
-        elif now_mx.weekday() == 5:  # Saturday after 2pm
-            schedule_note = settings.OFF_HOURS_MSG_SATURDAY
-        else:  # Weekday after 6pm
-            schedule_note = settings.OFF_HOURS_MSG_WEEKNIGHT
-        if schedule_note:
-            reply_text = f"{reply_text}\n\n{schedule_note}"
+        # Check if we've already sent a schedule notice in this conversation
+        schedule_already_sent = False
+        if history:
+            for msg in history:
+                if msg.get("role") == "assistant":
+                    msg_lower = msg.get("content", "").lower()
+                    if "horario" in msg_lower and ("9am" in msg_lower or "9:00" in msg_lower):
+                        schedule_already_sent = True
+                        break
+
+        if not schedule_already_sent:
+            now_mx = get_mexico_now()
+            if now_mx.weekday() == 6:  # Sunday
+                schedule_note = settings.OFF_HOURS_MSG_SUNDAY
+            elif now_mx.weekday() == 5:  # Saturday after 2pm
+                schedule_note = settings.OFF_HOURS_MSG_SATURDAY
+            else:  # Weekday after 6pm
+                schedule_note = settings.OFF_HOURS_MSG_WEEKNIGHT
+            if schedule_note:
+                reply_text = f"{reply_text}\n\n{schedule_note}"
 
     # Send reply via Evolution (slower if off-hours)
     await _send_reply(phone, reply_text, slow=_off_hours)
