@@ -255,6 +255,13 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("ℹ️ Monday Queue disabled or Monday not configured")
 
+    # Auto-resume scheduler — resumes interrupted campaigns when office hours start
+    sender.start_auto_resume_scheduler(
+        memory_store=state.memory,
+        monday_queue=state.monday_queue,
+        bot_sent_ids=state.bot_sent_ids,
+    )
+
     logger.info(f"✅ Evolution instance: {settings.EVO_INSTANCE}")
     logger.info(f"✅ Bot identity: {settings.BOT_NAME} @ {settings.COMPANY_NAME}")
     logger.info("🟢 Followup Bot ready!")
@@ -271,6 +278,8 @@ async def lifespan(app: FastAPI):
         await state.http_client.aclose()
     if state._cache_sync_task:
         state._cache_sync_task.cancel()
+    if sender._auto_resume_task:
+        sender._auto_resume_task.cancel()
 
 
 app = FastAPI(title="Followup Bot", lifespan=lifespan)

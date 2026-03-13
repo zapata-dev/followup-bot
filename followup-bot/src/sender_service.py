@@ -138,6 +138,12 @@ class SenderService:
         self._active_campaigns: Dict[str, bool] = {}  # group_id → is_running
         self._paused_campaigns: set = set()
 
+        # Auto-resume: campaigns interrupted by end of office hours
+        # These will be automatically restarted when office hours begin again.
+        self._interrupted_campaigns: set = set()  # group_ids to resume
+        self._auto_resume_task: Optional[asyncio.Task] = None
+        self._auto_resume_deps: Dict = {}  # memory_store, monday_queue, bot_sent_ids
+
     # ──────────────────────────────────────────────────────────
     # RATE LIMIT CHECKS
     # ──────────────────────────────────────────────────────────
@@ -364,10 +370,18 @@ class SenderService:
 
                     # Check schedule (skip if force=True)
                     if not force and not is_office_hours():
+                        remaining = len(contacts) - i
                         logger.info(
                             f"🕐 Outside office hours, stopping. "
-                            f"Sent {sent} today. Remaining: {len(contacts) - i}"
+                            f"Sent {sent} today. Remaining: {remaining}"
                         )
+                        # Mark for auto-resume next business day
+                        if remaining > 0:
+                            self._interrupted_campaigns.add(group_id)
+                            logger.info(
+                                f"⏰ Campaign {group_id} saved for auto-resume "
+                                f"({remaining} contacts pending)"
+                            )
                         break
 
                     # Check hourly limit — wait instead of stopping
@@ -474,6 +488,70 @@ class SenderService:
             self._active_campaigns[group_id] = False
             logger.info(f"✅ Campaign {group_id} finished: {sent} sent, {errors} errors")
 
+    # ──────────────────────────────────────────────────────────
+    # AUTO-RESUME — restart interrupted campaigns at next office hours
+    # ──────────────────────────────────────────────────────────
+    def start_auto_resume_scheduler(self, memory_store=None, monday_queue=None, bot_sent_ids=None):
+        """
+        Start background task that checks every 60s if office hours started
+        and resumes any campaigns that were interrupted by end of office hours.
+        Call this once during app startup.
+        """
+        self._auto_resume_deps = {
+            "memory_store": memory_store,
+            "monday_queue": monday_queue,
+            "bot_sent_ids": bot_sent_ids,
+        }
+        self._auto_resume_task = asyncio.create_task(self._auto_resume_loop())
+        logger.info("✅ Auto-resume scheduler started")
+
+    async def _auto_resume_loop(self):
+        """Check every 60s if we should resume interrupted campaigns."""
+        was_office_hours = is_office_hours()
+        while True:
+            await asyncio.sleep(60)
+            try:
+                now_office_hours = is_office_hours()
+
+                # Trigger resume when office hours START (transition from off → on)
+                if now_office_hours and not was_office_hours:
+                    await self._resume_interrupted_campaigns()
+
+                was_office_hours = now_office_hours
+            except Exception as e:
+                logger.error(f"❌ Auto-resume loop error: {e}")
+
+    async def _resume_interrupted_campaigns(self):
+        """Resume all campaigns that were interrupted by end of office hours."""
+        if not self._interrupted_campaigns:
+            return
+
+        to_resume = list(self._interrupted_campaigns)
+        logger.info(
+            f"⏰ Office hours started — auto-resuming {len(to_resume)} "
+            f"interrupted campaign(s): {to_resume}"
+        )
+
+        for group_id in to_resume:
+            # Don't resume if it was manually paused or is already running
+            if group_id in self._paused_campaigns:
+                logger.info(f"⏸️ Skipping {group_id} — manually paused")
+                self._interrupted_campaigns.discard(group_id)
+                continue
+            if self._active_campaigns.get(group_id):
+                logger.info(f"▶️ Skipping {group_id} — already running")
+                self._interrupted_campaigns.discard(group_id)
+                continue
+
+            self._interrupted_campaigns.discard(group_id)
+            logger.info(f"🔄 Auto-resuming campaign {group_id}")
+            await self.start_campaign(
+                group_id,
+                memory_store=self._auto_resume_deps.get("memory_store"),
+                monday_queue=self._auto_resume_deps.get("monday_queue"),
+                bot_sent_ids=self._auto_resume_deps.get("bot_sent_ids"),
+            )
+
     def get_status(self) -> Dict:
         """Get current sender status."""
         now = get_mexico_now()
@@ -483,6 +561,7 @@ class SenderService:
         return {
             "active_campaigns": {k: v for k, v in self._active_campaigns.items() if v},
             "paused_campaigns": list(self._paused_campaigns),
+            "interrupted_campaigns": list(self._interrupted_campaigns),
             "sends_this_hour": self._sends_this_hour,
             "max_per_hour": self.max_per_hour,
             "sends_today": self._sends_today,
