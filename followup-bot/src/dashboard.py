@@ -93,6 +93,61 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .log-success { color: #22c55e; }
 .log-error { color: #ef4444; }
 .log-info { color: #3b82f6; }
+
+/* Tab navigation */
+.tab-nav { display: flex; gap: 0; margin-bottom: 32px; border-bottom: 2px solid #334155; }
+.tab-btn { padding: 12px 28px; font-size: 15px; font-weight: 600; color: #64748b; background: none; border: none; cursor: pointer; transition: all 0.2s; position: relative; }
+.tab-btn:hover { color: #e2e8f0; }
+.tab-btn.active { color: #22d3ee; }
+.tab-btn.active::after { content: ''; position: absolute; bottom: -2px; left: 0; right: 0; height: 2px; background: #22d3ee; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Template Builder */
+.tb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 768px) { .tb-grid { grid-template-columns: 1fr; } }
+
+.tb-panel { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 24px; }
+.tb-panel h3 { font-size: 15px; font-weight: 600; color: #f8fafc; margin-bottom: 16px; }
+
+.tb-label { font-size: 12px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; margin-bottom: 6px; display: block; }
+.tb-input { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 14px; font-family: inherit; outline: none; transition: border-color 0.2s; }
+.tb-input:focus { border-color: #22d3ee; }
+.tb-input::placeholder { color: #475569; }
+.tb-field { margin-bottom: 14px; }
+
+.tb-textarea { width: 100%; min-height: 140px; padding: 14px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 14px; font-family: 'SF Mono', 'Fira Code', monospace; line-height: 1.6; outline: none; resize: vertical; transition: border-color 0.2s; }
+.tb-textarea:focus { border-color: #22d3ee; }
+.tb-textarea::placeholder { color: #475569; }
+
+.tb-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.btn-preview { background: #22d3ee; color: #0f172a; }
+.btn-preview:hover { background: #06b6d4; transform: translateY(-1px); }
+.btn-regen { background: #8b5cf6; color: #fff; }
+.btn-regen:hover { background: #7c3aed; transform: translateY(-1px); }
+.btn-copy { background: #334155; color: #e2e8f0; }
+.btn-copy:hover { background: #475569; }
+
+.tb-preview-box { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; min-height: 100px; font-size: 14px; line-height: 1.7; color: #f8fafc; white-space: pre-wrap; word-wrap: break-word; }
+.tb-preview-box.empty { color: #475569; font-style: italic; }
+
+.tb-validation { margin-top: 12px; padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; display: none; }
+.tb-validation.warning { display: block; background: #422006; color: #eab308; border: 1px solid #eab308; }
+.tb-validation.ok { display: block; background: #052e16; color: #22c55e; border: 1px solid #22c55e; }
+
+/* Variable chips */
+.tb-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tb-chip { font-size: 12px; padding: 4px 10px; border-radius: 6px; background: #0f172a; border: 1px solid #334155; color: #94a3b8; cursor: pointer; transition: all 0.2s; font-family: 'SF Mono', 'Fira Code', monospace; }
+.tb-chip:hover { border-color: #22d3ee; color: #22d3ee; }
+
+/* Spintax examples */
+.tb-example { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-top: 10px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; line-height: 1.8; color: #94a3b8; cursor: pointer; transition: border-color 0.2s; }
+.tb-example:hover { border-color: #22d3ee; }
+.tb-example-label { font-size: 11px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; margin-bottom: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+
+/* Counter */
+.tb-counter { font-size: 12px; color: #64748b; margin-top: 8px; }
+.tb-counter strong { color: #22d3ee; }
 </style>
 </head>
 <body>
@@ -106,44 +161,154 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 </div>
 
 <div class="container">
-    <!-- Stats -->
-    <div class="stats-bar">
-        <div class="stat-card">
-            <div class="label">Enviados esta hora</div>
-            <div class="value cyan" id="sendsHour">--</div>
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+        <button class="tab-btn active" onclick="switchTab('campaigns')">Campanas</button>
+        <button class="tab-btn" onclick="switchTab('builder')">Constructor de Templates</button>
+    </div>
+
+    <!-- ═══════════ TAB 1: CAMPAIGNS ═══════════ -->
+    <div class="tab-content active" id="tab-campaigns">
+        <!-- Stats -->
+        <div class="stats-bar">
+            <div class="stat-card">
+                <div class="label">Enviados esta hora</div>
+                <div class="value cyan" id="sendsHour">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Limite por hora</div>
+                <div class="value" id="maxHour">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Campanas activas</div>
+                <div class="value green" id="activeCampaigns">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Uptime</div>
+                <div class="value" id="uptime">--</div>
+            </div>
         </div>
-        <div class="stat-card">
-            <div class="label">Limite por hora</div>
-            <div class="value" id="maxHour">--</div>
+
+        <!-- Campaigns -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div class="section-title" style="margin-bottom: 0;">Campanas</div>
+            <button class="btn btn-refresh" onclick="loadAll()">Actualizar</button>
         </div>
-        <div class="stat-card">
-            <div class="label">Campanas activas</div>
-            <div class="value green" id="activeCampaigns">--</div>
+
+        <div class="campaign-grid" id="campaignGrid">
+            <div class="empty-state">
+                <div class="icon">...</div>
+                <p>Cargando campanas...</p>
+            </div>
         </div>
-        <div class="stat-card">
-            <div class="label">Uptime</div>
-            <div class="value" id="uptime">--</div>
+
+        <!-- Activity log -->
+        <div class="log-section">
+            <div class="section-title">Actividad</div>
+            <div class="log-box" id="logBox">
+                <div class="log-entry"><span class="log-time">[--:--]</span> <span class="log-info">Panel iniciado, conectando con el bot...</span></div>
+            </div>
         </div>
     </div>
 
-    <!-- Campaigns -->
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <div class="section-title" style="margin-bottom: 0;">Campanas</div>
-        <button class="btn btn-refresh" onclick="loadAll()">Actualizar</button>
-    </div>
+    <!-- ═══════════ TAB 2: TEMPLATE BUILDER ═══════════ -->
+    <div class="tab-content" id="tab-builder">
 
-    <div class="campaign-grid" id="campaignGrid">
-        <div class="empty-state">
-            <div class="icon">...</div>
-            <p>Cargando campanas...</p>
-        </div>
-    </div>
+        <div class="tb-grid">
+            <!-- LEFT COLUMN: Editor -->
+            <div>
+                <!-- Test data -->
+                <div class="tb-panel" style="margin-bottom: 16px;">
+                    <h3>Datos de prueba</h3>
+                    <div class="tb-field">
+                        <label class="tb-label">Nombre del contacto</label>
+                        <input class="tb-input" id="tbNombre" type="text" placeholder="Carlos Mendoza" value="Carlos Mendoza">
+                    </div>
+                    <div class="tb-field">
+                        <label class="tb-label">Vehiculo de interes</label>
+                        <input class="tb-input" id="tbVehiculo" type="text" placeholder="Freightliner Cascadia 2020" value="Freightliner Cascadia 2020">
+                    </div>
+                    <div class="tb-field">
+                        <label class="tb-label">Notas (opcional)</label>
+                        <input class="tb-input" id="tbNotas" type="text" placeholder="Interesado en financiamiento">
+                    </div>
+                    <div class="tb-field" style="margin-bottom: 0;">
+                        <label class="tb-label">Resumen conversacion previa (opcional)</label>
+                        <input class="tb-input" id="tbResumen" type="text" placeholder="Pregunto precio y disponibilidad">
+                    </div>
+                </div>
 
-    <!-- Activity log -->
-    <div class="log-section">
-        <div class="section-title">Actividad</div>
-        <div class="log-box" id="logBox">
-            <div class="log-entry"><span class="log-time">[--:--]</span> <span class="log-info">Panel iniciado, conectando con el bot...</span></div>
+                <!-- Template editor -->
+                <div class="tb-panel">
+                    <h3>Template</h3>
+                    <textarea class="tb-textarea" id="tbTemplate" placeholder="Escribe tu template aqui...&#10;&#10;Usa variables: {nombre}, {vehiculo}&#10;Usa spintax: [opcion1|opcion2|opcion3]">[Hola|Buenas|Que tal] {nombre}, vi que estuviste viendo el {vehiculo}.
+¿[Sigues interesado|Todavia lo evaluas|Ya resolviste algo]?</textarea>
+
+                    <div class="tb-validation" id="tbValidation"></div>
+
+                    <div class="tb-counter" id="tbCounter"></div>
+
+                    <div class="tb-actions">
+                        <button class="btn btn-preview" onclick="tbPreview()">Vista Previa</button>
+                        <button class="btn btn-regen" onclick="tbPreview()">Regenerar</button>
+                        <button class="btn btn-copy" onclick="tbCopyTemplate()">Copiar Template</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: Preview + Reference -->
+            <div>
+                <!-- Preview -->
+                <div class="tb-panel" style="margin-bottom: 16px;">
+                    <h3>Vista previa del mensaje</h3>
+                    <div class="tb-preview-box empty" id="tbPreviewBox">Haz clic en "Vista Previa" para ver como quedaria el mensaje...</div>
+                </div>
+
+                <!-- Quick reference -->
+                <div class="tb-panel" style="margin-bottom: 16px;">
+                    <h3>Variables disponibles</h3>
+                    <p style="font-size: 12px; color: #94a3b8; margin-bottom: 10px;">Haz clic en una variable para insertarla en el template</p>
+                    <div class="tb-chips">
+                        <span class="tb-chip" onclick="tbInsertVar('{nombre}')">{nombre}</span>
+                        <span class="tb-chip" onclick="tbInsertVar('{vehiculo}')">{vehiculo}</span>
+                        <span class="tb-chip" onclick="tbInsertVar('{bot_name}')">{bot_name}</span>
+                        <span class="tb-chip" onclick="tbInsertVar('{company_name}')">{company_name}</span>
+                        <span class="tb-chip" onclick="tbInsertVar('{company_url}')">{company_url}</span>
+                        <span class="tb-chip" onclick="tbInsertVar('{notas}')">{notas}</span>
+                        <span class="tb-chip" onclick="tbInsertVar('{resumen}')">{resumen}</span>
+                    </div>
+                </div>
+
+                <!-- Templates de ejemplo -->
+                <div class="tb-panel">
+                    <h3>Plantillas de ejemplo</h3>
+                    <p style="font-size: 12px; color: #94a3b8; margin-bottom: 12px;">Haz clic en una plantilla para cargarla en el editor</p>
+
+                    <div class="tb-example" onclick="tbLoadExample(this)">
+                        <div class="tb-example-label">Lead perdido</div>
+                        [Hola|Buenas|Que tal] {nombre}, [te escribo|te contacto|me comunico] de {company_name}.
+[Hace un tiempo nos preguntaste|Vi que en su momento preguntaste|Recuerdo que preguntaste] por el {vehiculo}. ¿[Sigues interesado|Todavia lo consideras|Ya resolviste tu compra]?
+                    </div>
+
+                    <div class="tb-example" onclick="tbLoadExample(this)" style="margin-top: 8px;">
+                        <div class="tb-example-label">Seguimiento cotizacion</div>
+                        [Hola|Buenas] {nombre}, soy {bot_name} de {company_name}.
+¿[Te pudieron resolver|Como te fue con|Te dieron respuesta sobre] tu consulta [sobre|del|acerca del] {vehiculo}?
+                    </div>
+
+                    <div class="tb-example" onclick="tbLoadExample(this)" style="margin-top: 8px;">
+                        <div class="tb-example-label">Post visita</div>
+                        [Hola|Que tal] {nombre}, soy {bot_name} de {company_name}.
+¿[Que tal te parecio|Como te fue con|Que impresion te llevo] el {vehiculo} [cuando viniste a verlo|en tu visita]?
+                    </div>
+
+                    <div class="tb-example" onclick="tbLoadExample(this)" style="margin-top: 8px;">
+                        <div class="tb-example-label">Servicio / postventa</div>
+                        [Hola|Buenas] {nombre}, [te contacto|me comunico] de {company_name}.
+¿[Como te han atendido|Que tal la atencion|Como ha sido tu experiencia] con [tu unidad|el {vehiculo}]? [Queremos asegurarnos de que todo vaya bien|Nos importa tu experiencia].
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -332,6 +497,224 @@ async function pauseCampaign(groupId) {
 async function loadAll() {
     await Promise.all([loadHealth(), loadStatus(), loadGroups()]);
 }
+
+// ══════════════════════════════════════════
+// TAB NAVIGATION
+// ══════════════════════════════════════════
+function switchTab(tabName) {
+    // Update buttons
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+    // Activate selected
+    const tabs = { 'campaigns': 0, 'builder': 1 };
+    document.querySelectorAll('.tab-btn')[tabs[tabName]].classList.add('active');
+    document.getElementById('tab-' + tabName).classList.add('active');
+}
+
+// ══════════════════════════════════════════
+// TEMPLATE BUILDER
+// ══════════════════════════════════════════
+
+// Resolve spintax: [option1|option2|option3] → picks one randomly
+function resolveSpintax(text) {
+    const pattern = /\[([^\[\]]+\|[^\[\]]+)\]/;
+    let result = text;
+    let safety = 0;
+    while (pattern.test(result) && safety < 50) {
+        result = result.replace(pattern, function(match, group) {
+            const options = group.split('|');
+            return options[Math.floor(Math.random() * options.length)];
+        });
+        safety++;
+    }
+    return result;
+}
+
+// Validate spintax brackets
+function validateTemplate(text) {
+    const issues = [];
+
+    // Check for unmatched brackets
+    let depth = 0;
+    for (let i = 0; i < text.length; i++) {
+        if (text[i] === '[') depth++;
+        if (text[i] === ']') depth--;
+        if (depth < 0) {
+            issues.push('Hay un corchete ] de mas sin su [ correspondiente (posicion ' + (i + 1) + ')');
+            break;
+        }
+    }
+    if (depth > 0) {
+        issues.push('Falta cerrar ' + depth + ' corchete(s) — revisa que cada [ tenga su ]');
+    }
+
+    // Check for brackets without pipe (not spintax)
+    const noPipe = text.match(/\[[^\[\]|]+\]/g);
+    if (noPipe) {
+        noPipe.forEach(function(m) {
+            issues.push('El bloque ' + m + ' no tiene opciones separadas con | — no es spintax valido');
+        });
+    }
+
+    // Check for unknown variables
+    const vars = text.match(/\{(\w+)\}/g) || [];
+    const known = ['nombre', 'vehiculo', 'bot_name', 'company_name', 'company_url', 'notas', 'resumen', 'mensaje'];
+    vars.forEach(function(v) {
+        const name = v.slice(1, -1);
+        if (known.indexOf(name) === -1) {
+            issues.push('Variable desconocida: ' + v + ' — no sera reemplazada');
+        }
+    });
+
+    return issues;
+}
+
+// Count spintax combinations
+function countCombinations(text) {
+    const blocks = text.match(/\[([^\[\]]+\|[^\[\]]+)\]/g) || [];
+    if (blocks.length === 0) return 1;
+    let total = 1;
+    blocks.forEach(function(b) {
+        const options = b.slice(1, -1).split('|').length;
+        total *= options;
+    });
+    return total;
+}
+
+// Generate preview
+function tbPreview() {
+    const template = document.getElementById('tbTemplate').value.trim();
+    const previewBox = document.getElementById('tbPreviewBox');
+    const validation = document.getElementById('tbValidation');
+    const counter = document.getElementById('tbCounter');
+
+    if (!template) {
+        previewBox.className = 'tb-preview-box empty';
+        previewBox.textContent = 'Escribe un template para ver la vista previa...';
+        validation.style.display = 'none';
+        counter.innerHTML = '';
+        return;
+    }
+
+    // Validate
+    const issues = validateTemplate(template);
+    if (issues.length > 0) {
+        validation.className = 'tb-validation warning';
+        validation.innerHTML = issues.join('<br>');
+    } else {
+        validation.className = 'tb-validation ok';
+        validation.textContent = 'Template valido — sin errores de sintaxis';
+    }
+
+    // Count combinations
+    const combos = countCombinations(template);
+    counter.innerHTML = 'Combinaciones posibles: <strong>' + combos.toLocaleString() + '</strong>';
+
+    // Resolve spintax
+    let msg = resolveSpintax(template);
+
+    // Replace variables
+    const nombre = document.getElementById('tbNombre').value || 'cliente';
+    const vehiculo = document.getElementById('tbVehiculo').value || 'tu unidad de interes';
+    const notas = document.getElementById('tbNotas').value || '';
+    const resumen = document.getElementById('tbResumen').value || '';
+
+    msg = msg.replace(/\{nombre\}/g, nombre);
+    msg = msg.replace(/\{vehiculo\}/g, vehiculo);
+    msg = msg.replace(/\{bot_name\}/g, 'Estefania Fernandez');
+    msg = msg.replace(/\{company_name\}/g, 'Go-On Zapata');
+    msg = msg.replace(/\{company_url\}/g, 'go-on.mx');
+    msg = msg.replace(/\{notas\}/g, notas);
+    msg = msg.replace(/\{resumen\}/g, resumen);
+    msg = msg.replace(/\{mensaje\}/g, '');
+    msg = msg.replace(/\s+/g, ' ').trim();
+
+    // Restore line breaks (newlines in template become real line breaks)
+    const lines = template.split('\n');
+    if (lines.length > 1) {
+        // Re-resolve with line awareness
+        let multiMsg = resolveSpintax(template);
+        multiMsg = multiMsg.replace(/\{nombre\}/g, nombre);
+        multiMsg = multiMsg.replace(/\{vehiculo\}/g, vehiculo);
+        multiMsg = multiMsg.replace(/\{bot_name\}/g, 'Estefania Fernandez');
+        multiMsg = multiMsg.replace(/\{company_name\}/g, 'Go-On Zapata');
+        multiMsg = multiMsg.replace(/\{company_url\}/g, 'go-on.mx');
+        multiMsg = multiMsg.replace(/\{notas\}/g, notas);
+        multiMsg = multiMsg.replace(/\{resumen\}/g, resumen);
+        multiMsg = multiMsg.replace(/\{mensaje\}/g, '');
+        msg = multiMsg;
+    }
+
+    previewBox.className = 'tb-preview-box';
+    previewBox.textContent = msg;
+}
+
+// Insert variable at cursor position in textarea
+function tbInsertVar(varName) {
+    const ta = document.getElementById('tbTemplate');
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const text = ta.value;
+    ta.value = text.substring(0, start) + varName + text.substring(end);
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = start + varName.length;
+}
+
+// Load example template into editor
+function tbLoadExample(el) {
+    const lines = el.innerText.split('\n');
+    // Skip the first line (label) and trim
+    const template = lines.slice(1).join('\n').trim();
+    document.getElementById('tbTemplate').value = template;
+    tbPreview();
+}
+
+// Copy template text to clipboard
+function tbCopyTemplate() {
+    const template = document.getElementById('tbTemplate').value.trim();
+    if (!template) {
+        toast('No hay template para copiar', 'error');
+        return;
+    }
+    navigator.clipboard.writeText(template).then(function() {
+        toast('Template copiado al portapapeles', 'success');
+    }).catch(function() {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea');
+        ta.value = template;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        toast('Template copiado al portapapeles', 'success');
+    });
+}
+
+// Live validation as user types
+document.getElementById('tbTemplate').addEventListener('input', function() {
+    const text = this.value;
+    const validation = document.getElementById('tbValidation');
+    const counter = document.getElementById('tbCounter');
+
+    if (!text.trim()) {
+        validation.style.display = 'none';
+        counter.innerHTML = '';
+        return;
+    }
+
+    const issues = validateTemplate(text);
+    if (issues.length > 0) {
+        validation.className = 'tb-validation warning';
+        validation.innerHTML = issues.join('<br>');
+    } else {
+        validation.className = 'tb-validation ok';
+        validation.textContent = 'Template valido';
+    }
+
+    const combos = countCombinations(text);
+    counter.innerHTML = 'Combinaciones posibles: <strong>' + combos.toLocaleString() + '</strong>';
+});
 
 // ── Init ──
 loadAll();
