@@ -193,6 +193,32 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 /* Button gen5 */
 .btn-gen5 { background: #f97316; color: #fff; }
 .btn-gen5:hover { background: #ea580c; transform: translateY(-1px); }
+.btn-copy-preview { background: #0ea5e9; color: #fff; }
+.btn-copy-preview:hover { background: #0284c7; transform: translateY(-1px); }
+
+/* ── V3: Campaign selector ── */
+.tb-campaign-select { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 14px; outline: none; cursor: pointer; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+.tb-campaign-select:focus { border-color: #22d3ee; }
+.tb-campaign-hint { font-size: 12px; color: #64748b; margin-top: 6px; font-style: italic; }
+
+/* ── V3: Snippet library ── */
+.tb-snippet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+@media (max-width: 768px) { .tb-snippet-grid { grid-template-columns: 1fr; } }
+.tb-snippet { font-size: 12px; padding: 8px 10px; border-radius: 6px; background: #0f172a; border: 1px solid #334155; color: #94a3b8; cursor: pointer; transition: all 0.2s; text-align: left; font-family: inherit; line-height: 1.4; }
+.tb-snippet:hover { border-color: #22d3ee; color: #22d3ee; }
+.tb-snippet-cat { font-size: 11px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; margin-top: 12px; margin-bottom: 6px; font-weight: 600; }
+.tb-snippet-cat:first-child { margin-top: 0; }
+
+/* ── V3: Good vs Bad examples ── */
+.tb-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+@media (max-width: 768px) { .tb-compare { grid-template-columns: 1fr; } }
+.tb-compare-card { border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.6; }
+.tb-compare-card.good { background: #052e16; border: 1px solid #22c55e; color: #bbf7d0; }
+.tb-compare-card.bad { background: #450a0a; border: 1px solid #ef4444; color: #fecaca; }
+.tb-compare-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 6px; }
+.tb-compare-card.good .tb-compare-label { color: #22c55e; }
+.tb-compare-card.bad .tb-compare-label { color: #ef4444; }
+.tb-compare-why { font-size: 11px; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); font-style: italic; color: #94a3b8; }
 </style>
 </head>
 <body>
@@ -262,6 +288,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <div class="tb-grid">
             <!-- LEFT COLUMN: Editor -->
             <div>
+                <!-- Campaign selector -->
+                <div class="tb-panel" style="margin-bottom: 16px;">
+                    <h3>Tipo de campana</h3>
+                    <select class="tb-campaign-select" id="tbCampaignType" onchange="tbCampaignChanged()">
+                        <option value="">-- Seleccionar tipo --</option>
+                        <option value="lost_lead">Lead perdido / Sin interes</option>
+                        <option value="assigned_lead">Lead asignado / Cotizacion</option>
+                        <option value="attended_appointment">Cita atendida / Post-visita</option>
+                        <option value="customer_service">Servicio / Postventa</option>
+                    </select>
+                    <div class="tb-campaign-hint" id="tbCampaignHint">Selecciona un tipo para cargar sugerencias y tono recomendado</div>
+                </div>
+
                 <!-- Test data -->
                 <div class="tb-panel" style="margin-bottom: 16px;">
                     <h3>Datos de prueba</h3>
@@ -297,6 +336,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                         <button class="btn btn-preview" onclick="tbPreview()">Vista Previa</button>
                         <button class="btn btn-gen5" onclick="tbGenerate5()">Generar 5 Variantes</button>
                         <button class="btn btn-copy" onclick="tbCopyTemplate()">Copiar Template</button>
+                        <button class="btn btn-copy-preview" onclick="tbCopyPreview()">Copiar Preview</button>
                     </div>
                 </div>
             </div>
@@ -348,10 +388,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                     </div>
                 </div>
 
-                <!-- Quick reference -->
+                <!-- Quick reference: Variables -->
                 <div class="tb-panel" style="margin-bottom: 16px;">
                     <h3>Variables disponibles</h3>
-                    <p style="font-size: 12px; color: #94a3b8; margin-bottom: 10px;">Haz clic en una variable para insertarla en el template</p>
+                    <p style="font-size: 12px; color: #94a3b8; margin-bottom: 10px;">Clic para insertar en el template</p>
                     <div class="tb-chips">
                         <span class="tb-chip" onclick="tbInsertVar('{nombre}')">{nombre}</span>
                         <span class="tb-chip" onclick="tbInsertVar('{vehiculo}')">{vehiculo}</span>
@@ -363,10 +403,78 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                     </div>
                 </div>
 
-                <!-- Templates de ejemplo -->
+                <!-- Snippet library -->
+                <div class="tb-panel" style="margin-bottom: 16px;">
+                    <h3>Biblioteca de bloques</h3>
+                    <p style="font-size: 12px; color: #94a3b8; margin-bottom: 6px;">Clic en un bloque para insertarlo en el template. Arma tu mensaje como LEGO.</p>
+
+                    <div class="tb-snippet-cat">Saludos</div>
+                    <div class="tb-snippet-grid">
+                        <button class="tb-snippet" onclick="tbInsertSnippet('[Hola|Buenas|Que tal] {nombre}')">Informal: [Hola|Buenas|Que tal]</button>
+                        <button class="tb-snippet" onclick="tbInsertSnippet('[Hola|Buenos dias] {nombre}')">Formal: [Hola|Buenos dias]</button>
+                        <button class="tb-snippet" onclick="tbInsertSnippet('[Hola|Que tal] {nombre}, ¿como estas?')">Calido: ¿como estas?</button>
+                    </div>
+
+                    <div class="tb-snippet-cat">Intros / Presentacion</div>
+                    <div class="tb-snippet-grid">
+                        <button class="tb-snippet" onclick="tbInsertSnippet(', soy {bot_name} de {company_name}.')">soy [bot] de [empresa]</button>
+                        <button class="tb-snippet" onclick="tbInsertSnippet(', [te escribo|te contacto|me comunico] de {company_name}.')">[te escribo|contacto] de...</button>
+                        <button class="tb-snippet" onclick="tbInsertSnippet(', te [saluda|habla] {bot_name} de {company_name}.')">te [saluda|habla] [bot]...</button>
+                    </div>
+
+                    <div class="tb-snippet-cat">Cuerpo</div>
+                    <div class="tb-snippet-grid">
+                        <button class="tb-snippet" onclick="tbInsertSnippet('\n[Hace un tiempo|Anteriormente|Recuerdo que] [nos preguntaste|mostraste interes] por el {vehiculo}.')">Recordatorio de interes</button>
+                        <button class="tb-snippet" onclick="tbInsertSnippet('\n[Queria saber|Me gustaria saber] como [te fue|te ha ido] con el {vehiculo}.')">Seguimiento de experiencia</button>
+                        <button class="tb-snippet" onclick="tbInsertSnippet('\n[Vi que|Tengo entendido que] te cotizaron el {vehiculo}.')">Referencia a cotizacion</button>
+                    </div>
+
+                    <div class="tb-snippet-cat">Cierres / Preguntas</div>
+                    <div class="tb-snippet-grid">
+                        <button class="tb-snippet" onclick="tbInsertSnippet('\n¿[Sigues interesado|Todavia lo consideras|Ya resolviste algo]?')">Pregunta abierta</button>
+                        <button class="tb-snippet" onclick="tbInsertSnippet('\n¿[Te puedo ayudar|Hay algo en lo que pueda apoyarte] con [eso|tu busqueda]?')">Oferta de ayuda</button>
+                        <button class="tb-snippet" onclick="tbInsertSnippet('\n¿[Que tal te parecio|Como te fue|Que te parecio]?')">Pedir opinion</button>
+                        <button class="tb-snippet" onclick="tbInsertSnippet('\n[Quedo al pendiente|Estoy para ayudarte|Con gusto te apoyo].')">Cierre suave</button>
+                    </div>
+                </div>
+
+                <!-- Good vs Bad examples -->
+                <div class="tb-panel" style="margin-bottom: 16px;">
+                    <h3>Ejemplos: Bien vs Mal</h3>
+                    <p style="font-size: 12px; color: #94a3b8; margin-bottom: 10px;">Aprende a distinguir un buen template de uno debil</p>
+
+                    <div class="tb-compare">
+                        <div class="tb-compare-card good">
+                            <div class="tb-compare-label">Recomendado</div>
+                            [Hola|Que tal] {nombre}, soy {bot_name} de {company_name}.<br>
+                            [Recuerdo que preguntaste|Vi tu interes] por el {vehiculo}. ¿[Sigues evaluando|Ya resolviste]?
+                            <div class="tb-compare-why">Corto, con contexto, con pregunta, con variacion.</div>
+                        </div>
+                        <div class="tb-compare-card bad">
+                            <div class="tb-compare-label">Evitar</div>
+                            Hola, te escribo de Go-On Zapata para informarte que tenemos una promocion especial en camiones seminuevos con precios de liquidacion, aprovecha esta oportunidad unica.
+                            <div class="tb-compare-why">Largo, sin nombre, sin vehiculo, sin pregunta, palabras spam.</div>
+                        </div>
+                    </div>
+
+                    <div class="tb-compare" style="margin-top: 8px;">
+                        <div class="tb-compare-card good">
+                            <div class="tb-compare-label">Recomendado</div>
+                            [Buenas|Hola] {nombre}, ¿[como te fue|que tal te parecio] el {vehiculo} [cuando viniste a verlo|en tu visita]?
+                            <div class="tb-compare-why">Directo, personalizado, pregunta natural.</div>
+                        </div>
+                        <div class="tb-compare-card bad">
+                            <div class="tb-compare-label">Evitar</div>
+                            Hola buen dia. Le escribo para darle seguimiento a su visita en nuestra agencia. Quedamos a sus ordenes para cualquier duda o aclaracion que pueda tener. Saludos cordiales.
+                            <div class="tb-compare-why">Sin nombre, sin vehiculo, sin spintax, demasiado formal, sin pregunta.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Templates de ejemplo completos -->
                 <div class="tb-panel">
-                    <h3>Plantillas de ejemplo</h3>
-                    <p style="font-size: 12px; color: #94a3b8; margin-bottom: 12px;">Haz clic en una plantilla para cargarla en el editor</p>
+                    <h3>Plantillas completas</h3>
+                    <p style="font-size: 12px; color: #94a3b8; margin-bottom: 12px;">Clic en una plantilla para cargarla en el editor</p>
 
                     <div class="tb-example" onclick="tbLoadExample(this)">
                         <div class="tb-example-label">Lead perdido</div>
@@ -858,6 +966,7 @@ function tbPreview() {
     var msg = tbResolveOne(template);
     if (needsInject) msg = tbInjectIntro(msg);
 
+    lastPreviewText = msg;
     container.innerHTML = renderBubble(msg, 1, needsInject);
 }
 
@@ -871,13 +980,16 @@ function tbGenerate5() {
     var needsInject = !tbHasPresentation(template);
     var container = document.getElementById('tbWaContainer');
     var html = '';
+    var allMsgs = [];
 
     for (var i = 1; i <= 5; i++) {
         var msg = tbResolveOne(template);
         if (needsInject) msg = tbInjectIntro(msg);
+        allMsgs.push(msg);
         html += renderBubble(msg, i, needsInject);
     }
 
+    lastPreviewText = allMsgs[0];
     container.innerHTML = html;
 }
 
@@ -916,6 +1028,74 @@ function tbCopyTemplate() {
         document.body.removeChild(ta);
         toast('Template copiado al portapapeles', 'success');
     });
+}
+
+// ── Insert snippet at cursor ──
+function tbInsertSnippet(snippet) {
+    var ta = document.getElementById('tbTemplate');
+    var start = ta.selectionStart;
+    var end = ta.selectionEnd;
+    var text = ta.value;
+    ta.value = text.substring(0, start) + snippet + text.substring(end);
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = start + snippet.length;
+    tbUpdateQuality(ta.value);
+    toast('Bloque insertado', 'success');
+}
+
+// ── Copy resolved preview ──
+var lastPreviewText = '';
+function tbCopyPreview() {
+    if (!lastPreviewText) {
+        toast('Genera una vista previa primero', 'error');
+        return;
+    }
+    navigator.clipboard.writeText(lastPreviewText).then(function() {
+        toast('Preview copiado al portapapeles', 'success');
+    }).catch(function() {
+        var ta = document.createElement('textarea');
+        ta.value = lastPreviewText;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        toast('Preview copiado al portapapeles', 'success');
+    });
+}
+
+// ── Campaign type selector ──
+var TB_CAMPAIGN_PRESETS = {
+    lost_lead: {
+        hint: 'Tono consultivo y empático. El lead no respondio o no avanzo. Objetivo: reactivar interes sin presionar.',
+        template: '[Hola|Buenas|Que tal] {nombre}, [te escribo|te contacto|me comunico] de {company_name}.\n[Hace un tiempo nos preguntaste|Vi que en su momento preguntaste|Recuerdo que preguntaste] por el {vehiculo}. ¿[Sigues interesado|Todavia lo consideras|Ya resolviste tu compra]?'
+    },
+    assigned_lead: {
+        hint: 'Tono de seguimiento amable. El lead fue atendido por un vendedor. Objetivo: verificar que recibio atencion y si tiene dudas.',
+        template: '[Hola|Buenas] {nombre}, soy {bot_name} de {company_name}.\n¿[Te pudieron resolver|Como te fue con|Te dieron respuesta sobre] tu consulta [sobre|del|acerca del] {vehiculo}?'
+    },
+    attended_appointment: {
+        hint: 'Tono calido post-visita. El cliente ya vino a ver el vehiculo. Objetivo: conocer su impresion y abrir puerta a siguiente paso.',
+        template: '[Hola|Que tal] {nombre}, soy {bot_name} de {company_name}.\n¿[Que tal te parecio|Como te fue con|Que impresion te llevo] el {vehiculo} [cuando viniste a verlo|en tu visita]?'
+    },
+    customer_service: {
+        hint: 'Tono de servicio. El cliente ya compro o esta en servicio. Objetivo: medir satisfaccion y detectar oportunidades de mejora.',
+        template: '[Hola|Buenas] {nombre}, [te contacto|me comunico] de {company_name}.\n¿[Como te han atendido|Que tal la atencion|Como ha sido tu experiencia] con [tu unidad|el {vehiculo}]? [Queremos asegurarnos de que todo vaya bien|Nos importa tu experiencia].'
+    }
+};
+
+function tbCampaignChanged() {
+    var sel = document.getElementById('tbCampaignType').value;
+    var hint = document.getElementById('tbCampaignHint');
+
+    if (!sel) {
+        hint.textContent = 'Selecciona un tipo para cargar sugerencias y tono recomendado';
+        return;
+    }
+
+    var preset = TB_CAMPAIGN_PRESETS[sel];
+    hint.textContent = preset.hint;
+    document.getElementById('tbTemplate').value = preset.template;
+    tbGenerate5();
 }
 
 // ── Live validation on input ──
