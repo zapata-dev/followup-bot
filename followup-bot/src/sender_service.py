@@ -192,6 +192,10 @@ class SenderService:
         # Flag global: WhatsApp desconectado → abortar todo
         self._whatsapp_disconnected: bool = False
 
+        # Circuit breaker: N errores consecutivos → parar campaña
+        self.max_consecutive_errors = int(os.getenv("MAX_CONSECUTIVE_ERRORS", "3"))
+        self._consecutive_errors: int = 0
+
         # Auto-resume: campaigns interrupted by end of office hours
         self._interrupted_campaigns: set = set()
         self._auto_resume_task: Optional[asyncio.Task] = None
@@ -215,6 +219,25 @@ class SenderService:
             self._day_reset_at = current_day
             self._sends_today = 0
         return self._sends_today < self.max_per_day
+
+    # ──────────────────────────────────────────────────────────
+    # SPINTAX — resolve [opcion1|opcion2|opcion3] in templates
+    # ──────────────────────────────────────────────────────────
+    @staticmethod
+    def _resolve_spintax(text: str) -> str:
+        """
+        Resolve spintax blocks: [option1|option2|option3] → picks one randomly.
+        Works for user-defined templates from Monday or .env.
+        Example: "[Hola|Buen día] {nombre}" → "Buen día {nombre}"
+        """
+        pattern = re.compile(r'\[([^\[\]]+\|[^\[\]]+)\]')
+        while True:
+            match = pattern.search(text)
+            if not match:
+                break
+            options = match.group(1).split('|')
+            text = text[:match.start()] + random.choice(options) + text[match.end():]
+        return text
 
     # ──────────────────────────────────────────────────────────
     # MESSAGE SPINNING — nunca dos mensajes iguales
@@ -321,7 +344,9 @@ class SenderService:
             msg = msg.replace("{notas}", contact.get("notes", ""))
             msg = msg.replace("{resumen}", contact.get("resumen", ""))
             msg = re.sub(r'\{mensaje\}', '', msg)
-            return re.sub(r'\s+', ' ', msg).strip()
+            msg = re.sub(r'\s+', ' ', msg).strip()
+            # Apply spintax for user-defined templates: [opcion1|opcion2]
+            return self._resolve_spintax(msg)
 
         # No per-contact template → use spinning
         from src.conversation_logic import detect_campaign_type
@@ -337,8 +362,22 @@ class SenderService:
         if not jid:
             return {"success": False, "error": f"Invalid phone: {phone}"}
 
-        url = f"{self.evo_url}/message/sendText/{self.evo_instance}"
         headers = {"apikey": self.evo_key, "Content-Type": "application/json"}
+
+        # ── Simular "escribiendo..." antes de enviar ──
+        # Meta analiza si los mensajes aparecen instantáneamente (= bot).
+        # Un humano abre el chat, se ve "escribiendo..." unos segundos, y luego envía.
+        try:
+            presence_url = f"{self.evo_url}/chat/sendPresence/{self.evo_instance}"
+            typing_ms = min(len(text) * 80, 8000)  # ~80ms por carácter, max 8s
+            presence_body = {"number": jid, "presence": "composing", "delay": typing_ms}
+            await http_client.post(presence_url, json=presence_body, headers=headers)
+            # Esperar a que se muestre el estado "escribiendo" antes de enviar
+            await asyncio.sleep(typing_ms / 1000.0)
+        except Exception as e:
+            logger.debug(f"Presence composing failed (non-critical): {e}")
+
+        url = f"{self.evo_url}/message/sendText/{self.evo_instance}"
         body = {"number": jid, "text": text}
 
         for attempt in range(3):
@@ -428,6 +467,7 @@ class SenderService:
         sent = 0
         errors = 0
         batch_count = 0
+        consecutive_errors = 0
 
         try:
             contacts = await monday_followup.get_pending_contacts(group_id, limit=1000)
@@ -538,6 +578,7 @@ class SenderService:
                         break
 
                     if result["success"]:
+                        consecutive_errors = 0  # Reset circuit breaker
                         if bot_sent_ids and result.get("msg_id"):
                             bot_sent_ids.add(result["msg_id"])
 
@@ -584,6 +625,18 @@ class SenderService:
                                 phone, contact.get("group_title", group_id), "error", result["error"]
                             )
                         errors += 1
+                        consecutive_errors += 1
+
+                        # ── Circuit breaker: N errores seguidos → algo está mal ──
+                        if consecutive_errors >= self.max_consecutive_errors:
+                            logger.error(
+                                f"🔌 Circuit breaker: {consecutive_errors} consecutive errors "
+                                f"in campaign {group_id}. Stopping all campaigns."
+                            )
+                            self._abort_all_campaigns(
+                                f"{consecutive_errors} consecutive send errors"
+                            )
+                            break
 
         except Exception as e:
             logger.error(f"❌ Campaign {group_id} crashed: {e}")
@@ -671,6 +724,7 @@ class SenderService:
             "delay_range": f"{self.delay_min}-{self.delay_max}s",
             "batch_size": self.batch_size,
             "batch_pause": f"{self.batch_pause_min}-{self.batch_pause_max}s",
+            "circuit_breaker_limit": self.max_consecutive_errors,
         }
 
 
