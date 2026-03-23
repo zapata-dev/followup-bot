@@ -148,6 +148,51 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 /* Counter */
 .tb-counter { font-size: 12px; color: #64748b; margin-top: 8px; }
 .tb-counter strong { color: #22d3ee; }
+
+/* ── V2: Quality Semaphore ── */
+.tb-semaphore { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-radius: 10px; margin-bottom: 16px; border: 1px solid; }
+.tb-semaphore.green { background: #052e16; border-color: #22c55e; }
+.tb-semaphore.yellow { background: #422006; border-color: #eab308; }
+.tb-semaphore.red { background: #450a0a; border-color: #ef4444; }
+.tb-sem-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+.tb-semaphore.green .tb-sem-dot { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+.tb-semaphore.yellow .tb-sem-dot { background: #eab308; box-shadow: 0 0 8px #eab308; }
+.tb-semaphore.red .tb-sem-dot { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+.tb-sem-text { font-size: 13px; font-weight: 600; }
+.tb-semaphore.green .tb-sem-text { color: #22c55e; }
+.tb-semaphore.yellow .tb-sem-text { color: #eab308; }
+.tb-semaphore.red .tb-sem-text { color: #ef4444; }
+
+/* Quality checks list */
+.tb-checks { list-style: none; padding: 0; margin: 10px 0 0 0; }
+.tb-checks li { font-size: 12px; padding: 3px 0; display: flex; align-items: center; gap: 8px; }
+.tb-check-ok { color: #22c55e; }
+.tb-check-warn { color: #eab308; }
+.tb-check-fail { color: #ef4444; }
+
+/* ── V2: WhatsApp Bubble Preview ── */
+.tb-wa-container { display: flex; flex-direction: column; gap: 10px; }
+.tb-wa-bubble { background: #005c4b; border-radius: 8px 8px 8px 0; padding: 10px 14px; font-size: 14px; line-height: 1.6; color: #e9edef; max-width: 100%; white-space: pre-wrap; word-wrap: break-word; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+.tb-wa-bubble .tb-wa-time { display: block; text-align: right; font-size: 11px; color: #8696a0; margin-top: 4px; }
+.tb-wa-bubble .tb-wa-num { position: absolute; top: -18px; left: 0; font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+.tb-wa-bubble .tb-wa-injected { color: #fbbf24; font-style: italic; }
+
+/* ── V2: Stats bar for builder ── */
+.tb-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+@media (max-width: 768px) { .tb-stats { grid-template-columns: repeat(2, 1fr); } }
+.tb-stat { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; text-align: center; }
+.tb-stat .tb-stat-val { font-size: 22px; font-weight: 700; color: #f8fafc; }
+.tb-stat .tb-stat-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+.tb-stat.warn .tb-stat-val { color: #eab308; }
+.tb-stat.danger .tb-stat-val { color: #ef4444; }
+
+/* ── V2: Inject alert ── */
+.tb-inject-alert { padding: 10px 14px; border-radius: 8px; font-size: 12px; background: #1e1b4b; color: #a78bfa; border: 1px solid #7c3aed; margin-bottom: 12px; display: none; }
+.tb-inject-alert.visible { display: block; }
+
+/* Button gen5 */
+.btn-gen5 { background: #f97316; color: #fff; }
+.btn-gen5:hover { background: #ea580c; transform: translateY(-1px); }
 </style>
 </head>
 <body>
@@ -250,18 +295,57 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
                     <div class="tb-actions">
                         <button class="btn btn-preview" onclick="tbPreview()">Vista Previa</button>
-                        <button class="btn btn-regen" onclick="tbPreview()">Regenerar</button>
+                        <button class="btn btn-gen5" onclick="tbGenerate5()">Generar 5 Variantes</button>
                         <button class="btn btn-copy" onclick="tbCopyTemplate()">Copiar Template</button>
                     </div>
                 </div>
             </div>
 
-            <!-- RIGHT COLUMN: Preview + Reference -->
+            <!-- RIGHT COLUMN: Preview + Quality + Reference -->
             <div>
-                <!-- Preview -->
+                <!-- Quality semaphore -->
+                <div class="tb-semaphore green" id="tbSemaphore" style="display: none;">
+                    <div class="tb-sem-dot"></div>
+                    <div>
+                        <div class="tb-sem-text" id="tbSemText">Listo para usar</div>
+                        <ul class="tb-checks" id="tbChecks"></ul>
+                    </div>
+                </div>
+
+                <!-- Stats bar -->
+                <div class="tb-stats" id="tbStatsBar" style="display: none;">
+                    <div class="tb-stat" id="tbStatChars">
+                        <div class="tb-stat-val">0</div>
+                        <div class="tb-stat-label">Caracteres</div>
+                    </div>
+                    <div class="tb-stat" id="tbStatWords">
+                        <div class="tb-stat-val">0</div>
+                        <div class="tb-stat-label">Palabras</div>
+                    </div>
+                    <div class="tb-stat" id="tbStatLines">
+                        <div class="tb-stat-val">0</div>
+                        <div class="tb-stat-label">Lineas</div>
+                    </div>
+                    <div class="tb-stat" id="tbStatCombos">
+                        <div class="tb-stat-val">0</div>
+                        <div class="tb-stat-label">Variantes</div>
+                    </div>
+                </div>
+
+                <!-- Inject alert -->
+                <div class="tb-inject-alert" id="tbInjectAlert">
+                    El template no incluye presentacion del bot. El sistema agregara automaticamente:<br>
+                    <strong>"Hola, soy Estefania Fernandez de Go-On Zapata."</strong> al inicio del mensaje.
+                </div>
+
+                <!-- WhatsApp Preview -->
                 <div class="tb-panel" style="margin-bottom: 16px;">
-                    <h3>Vista previa del mensaje</h3>
-                    <div class="tb-preview-box empty" id="tbPreviewBox">Haz clic en "Vista Previa" para ver como quedaria el mensaje...</div>
+                    <h3>Vista previa (como se ve en WhatsApp)</h3>
+                    <div class="tb-wa-container" id="tbWaContainer">
+                        <div style="text-align: center; padding: 30px; color: #475569; font-style: italic; font-size: 13px;">
+                            Haz clic en "Vista Previa" o "Generar 5 Variantes" para ver los mensajes...
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Quick reference -->
@@ -513,10 +597,15 @@ function switchTab(tabName) {
 }
 
 // ══════════════════════════════════════════
-// TEMPLATE BUILDER
+// TEMPLATE BUILDER V2
 // ══════════════════════════════════════════
 
-// Resolve spintax: [option1|option2|option3] → picks one randomly
+const TB_BOT_NAME = 'Estefania Fernandez';
+const TB_COMPANY = 'Go-On Zapata';
+const TB_URL = 'go-on.mx';
+const TB_SPAM_WORDS = ['precio', 'oferta', 'descuento', 'promocion', 'promoción', 'gratis', 'liquidacion', 'liquidación', 'remate', 'ganga', 'oportunidad unica', 'oportunidad única', 'aprovecha', 'no te lo pierdas', 'urgente', 'ultima oportunidad', 'última oportunidad'];
+
+// ── Core: Resolve spintax ──
 function resolveSpintax(text) {
     const pattern = /\[([^\[\]]+\|[^\[\]]+)\]/;
     let result = text;
@@ -531,157 +620,295 @@ function resolveSpintax(text) {
     return result;
 }
 
-// Validate spintax brackets
-function validateTemplate(text) {
-    const issues = [];
-
-    // Check for unmatched brackets
-    let depth = 0;
-    for (let i = 0; i < text.length; i++) {
-        if (text[i] === '[') depth++;
-        if (text[i] === ']') depth--;
-        if (depth < 0) {
-            issues.push('Hay un corchete ] de mas sin su [ correspondiente (posicion ' + (i + 1) + ')');
-            break;
-        }
-    }
-    if (depth > 0) {
-        issues.push('Falta cerrar ' + depth + ' corchete(s) — revisa que cada [ tenga su ]');
-    }
-
-    // Check for brackets without pipe (not spintax)
-    const noPipe = text.match(/\[[^\[\]|]+\]/g);
-    if (noPipe) {
-        noPipe.forEach(function(m) {
-            issues.push('El bloque ' + m + ' no tiene opciones separadas con | — no es spintax valido');
-        });
-    }
-
-    // Check for unknown variables
-    const vars = text.match(/\{(\w+)\}/g) || [];
-    const known = ['nombre', 'vehiculo', 'bot_name', 'company_name', 'company_url', 'notas', 'resumen', 'mensaje'];
-    vars.forEach(function(v) {
-        const name = v.slice(1, -1);
-        if (known.indexOf(name) === -1) {
-            issues.push('Variable desconocida: ' + v + ' — no sera reemplazada');
-        }
-    });
-
-    return issues;
-}
-
-// Count spintax combinations
-function countCombinations(text) {
-    const blocks = text.match(/\[([^\[\]]+\|[^\[\]]+)\]/g) || [];
-    if (blocks.length === 0) return 1;
-    let total = 1;
-    blocks.forEach(function(b) {
-        const options = b.slice(1, -1).split('|').length;
-        total *= options;
-    });
-    return total;
-}
-
-// Generate preview
-function tbPreview() {
-    const template = document.getElementById('tbTemplate').value.trim();
-    const previewBox = document.getElementById('tbPreviewBox');
-    const validation = document.getElementById('tbValidation');
-    const counter = document.getElementById('tbCounter');
-
-    if (!template) {
-        previewBox.className = 'tb-preview-box empty';
-        previewBox.textContent = 'Escribe un template para ver la vista previa...';
-        validation.style.display = 'none';
-        counter.innerHTML = '';
-        return;
-    }
-
-    // Validate
-    const issues = validateTemplate(template);
-    if (issues.length > 0) {
-        validation.className = 'tb-validation warning';
-        validation.innerHTML = issues.join('<br>');
-    } else {
-        validation.className = 'tb-validation ok';
-        validation.textContent = 'Template valido — sin errores de sintaxis';
-    }
-
-    // Count combinations
-    const combos = countCombinations(template);
-    counter.innerHTML = 'Combinaciones posibles: <strong>' + combos.toLocaleString() + '</strong>';
-
-    // Resolve spintax
-    let msg = resolveSpintax(template);
-
-    // Replace variables
+// ── Core: Replace variables ──
+function tbReplaceVars(text) {
     const nombre = document.getElementById('tbNombre').value || 'cliente';
     const vehiculo = document.getElementById('tbVehiculo').value || 'tu unidad de interes';
     const notas = document.getElementById('tbNotas').value || '';
     const resumen = document.getElementById('tbResumen').value || '';
-
-    msg = msg.replace(/\{nombre\}/g, nombre);
-    msg = msg.replace(/\{vehiculo\}/g, vehiculo);
-    msg = msg.replace(/\{bot_name\}/g, 'Estefania Fernandez');
-    msg = msg.replace(/\{company_name\}/g, 'Go-On Zapata');
-    msg = msg.replace(/\{company_url\}/g, 'go-on.mx');
-    msg = msg.replace(/\{notas\}/g, notas);
-    msg = msg.replace(/\{resumen\}/g, resumen);
-    msg = msg.replace(/\{mensaje\}/g, '');
-    msg = msg.replace(/\s+/g, ' ').trim();
-
-    // Restore line breaks (newlines in template become real line breaks)
-    const lines = template.split('\n');
-    if (lines.length > 1) {
-        // Re-resolve with line awareness
-        let multiMsg = resolveSpintax(template);
-        multiMsg = multiMsg.replace(/\{nombre\}/g, nombre);
-        multiMsg = multiMsg.replace(/\{vehiculo\}/g, vehiculo);
-        multiMsg = multiMsg.replace(/\{bot_name\}/g, 'Estefania Fernandez');
-        multiMsg = multiMsg.replace(/\{company_name\}/g, 'Go-On Zapata');
-        multiMsg = multiMsg.replace(/\{company_url\}/g, 'go-on.mx');
-        multiMsg = multiMsg.replace(/\{notas\}/g, notas);
-        multiMsg = multiMsg.replace(/\{resumen\}/g, resumen);
-        multiMsg = multiMsg.replace(/\{mensaje\}/g, '');
-        msg = multiMsg;
-    }
-
-    previewBox.className = 'tb-preview-box';
-    previewBox.textContent = msg;
+    return text
+        .replace(/\{nombre\}/g, nombre)
+        .replace(/\{vehiculo\}/g, vehiculo)
+        .replace(/\{bot_name\}/g, TB_BOT_NAME)
+        .replace(/\{company_name\}/g, TB_COMPANY)
+        .replace(/\{company_url\}/g, TB_URL)
+        .replace(/\{notas\}/g, notas)
+        .replace(/\{resumen\}/g, resumen)
+        .replace(/\{mensaje\}/g, '');
 }
 
-// Insert variable at cursor position in textarea
+// ── Core: Detect if template has bot presentation ──
+function tbHasPresentation(text) {
+    var lower = text.toLowerCase();
+    var botFirst = TB_BOT_NAME.toLowerCase().split(' ')[0];
+    if (lower.indexOf(botFirst) !== -1) return true;
+    var patterns = [/\bsoy\s+\w+/, /\bte saluda\s+\w+/, /\bte escribe\s+\w+/, /\bmi nombre es\s+\w+/, /\ble habla\s+\w+/];
+    for (var i = 0; i < patterns.length; i++) {
+        if (patterns[i].test(lower)) return true;
+    }
+    return false;
+}
+
+// ── Core: Inject bot intro (mirrors Python logic) ──
+function tbInjectIntro(text) {
+    var greetPat = /^(hola[,.]?\s*(?:buen(?:os)?\s+(?:d[ií]as?|tardes?|noches?))?[,.]?\s*|buen(?:os)?\s+(?:d[ií]as?|tardes?|noches?)[,.]?\s*|¿?c[oó]mo\s+(?:te\s+encuentras|est[aá]s)\??[,.]?\s*)/i;
+    var match = text.match(greetPat);
+    if (match) {
+        var greeting = match[0].replace(/[,.\s]+$/, '');
+        var rest = text.substring(match[0].length).replace(/^\s+/, '');
+        return greeting + ', soy ' + TB_BOT_NAME + ' de ' + TB_COMPANY + '.\n' + rest;
+    }
+    return 'Hola, soy ' + TB_BOT_NAME + ' de ' + TB_COMPANY + '.\n' + text;
+}
+
+// ── Validate: syntax + quality ──
+function validateTemplate(text) {
+    var issues = [];
+    var depth = 0;
+    for (var i = 0; i < text.length; i++) {
+        if (text[i] === '[') depth++;
+        if (text[i] === ']') depth--;
+        if (depth < 0) { issues.push('Corchete ] sin su [ correspondiente (pos ' + (i+1) + ')'); break; }
+    }
+    if (depth > 0) issues.push('Falta cerrar ' + depth + ' corchete(s)');
+    var noPipe = text.match(/\[[^\[\]|]+\]/g);
+    if (noPipe) noPipe.forEach(function(m) { issues.push('Bloque ' + m + ' sin | — no es spintax'); });
+    var vars = text.match(/\{(\w+)\}/g) || [];
+    var known = ['nombre','vehiculo','bot_name','company_name','company_url','notas','resumen','mensaje'];
+    vars.forEach(function(v) { if (known.indexOf(v.slice(1,-1)) === -1) issues.push('Variable desconocida: ' + v); });
+    return issues;
+}
+
+// ── Count combinations ──
+function countCombinations(text) {
+    var blocks = text.match(/\[([^\[\]]+\|[^\[\]]+)\]/g) || [];
+    if (!blocks.length) return 1;
+    var total = 1;
+    blocks.forEach(function(b) { total *= b.slice(1,-1).split('|').length; });
+    return total;
+}
+
+// ── Detect spam words ──
+function detectSpamWords(text) {
+    var lower = text.toLowerCase();
+    var found = [];
+    TB_SPAM_WORDS.forEach(function(w) { if (lower.indexOf(w) !== -1) found.push(w); });
+    return found;
+}
+
+// ── Quality analysis ──
+function analyzeQuality(template, resolvedMsg) {
+    var checks = [];
+    var score = 0;
+    var maxScore = 0;
+
+    // 1. Has question
+    maxScore += 2;
+    if (/\?/.test(template)) { checks.push({ok: true, text: 'Termina con pregunta'}); score += 2; }
+    else { checks.push({ok: false, text: 'Sin pregunta — los mensajes con pregunta generan mas respuestas'}); }
+
+    // 2. Uses vehiculo
+    maxScore += 2;
+    if (/\{vehiculo\}/.test(template)) { checks.push({ok: true, text: 'Incluye vehiculo de interes'}); score += 2; }
+    else { checks.push({ok: false, text: 'No menciona {vehiculo} — pierde contexto'}); }
+
+    // 3. Message length
+    maxScore += 2;
+    var charCount = resolvedMsg.length;
+    if (charCount <= 250) { checks.push({ok: true, text: 'Longitud adecuada (' + charCount + ' caracteres)'}); score += 2; }
+    else if (charCount <= 400) { checks.push({ok: 'warn', text: 'Mensaje largo (' + charCount + ' chars) — los cortos funcionan mejor'}); score += 1; }
+    else { checks.push({ok: false, text: 'Mensaje muy largo (' + charCount + ' chars) — reducir a menos de 250'}); }
+
+    // 4. Spintax variation
+    maxScore += 2;
+    var combos = countCombinations(template);
+    if (combos >= 9) { checks.push({ok: true, text: 'Buena variacion (' + combos + ' combinaciones)'}); score += 2; }
+    else if (combos >= 3) { checks.push({ok: 'warn', text: 'Variacion baja (' + combos + ' combos) — agregar mas opciones'}); score += 1; }
+    else { checks.push({ok: false, text: 'Sin variacion (' + combos + ' combo) — agregar bloques [opcion1|opcion2|opcion3]'}); }
+
+    // 5. Spam words
+    maxScore += 2;
+    var spam = detectSpamWords(template);
+    if (spam.length === 0) { checks.push({ok: true, text: 'Sin palabras comerciales riesgosas'}); score += 2; }
+    else { checks.push({ok: false, text: 'Palabras riesgosas detectadas: ' + spam.join(', ')}); }
+
+    // 6. Syntax valid
+    maxScore += 1;
+    var syntaxIssues = validateTemplate(template);
+    if (syntaxIssues.length === 0) { checks.push({ok: true, text: 'Sintaxis correcta'}); score += 1; }
+    else { checks.push({ok: false, text: 'Errores de sintaxis: ' + syntaxIssues[0]}); }
+
+    // 7. Line count
+    maxScore += 1;
+    var lineCount = resolvedMsg.split('\n').filter(function(l) { return l.trim(); }).length;
+    if (lineCount <= 3) { checks.push({ok: true, text: lineCount + ' lineas — formato adecuado'}); score += 1; }
+    else { checks.push({ok: 'warn', text: lineCount + ' lineas — WhatsApp es chat, no email'}); }
+
+    // Calculate level
+    var pct = score / maxScore;
+    var level = pct >= 0.8 ? 'green' : pct >= 0.5 ? 'yellow' : 'red';
+    var label = pct >= 0.8 ? 'Listo para usar' : pct >= 0.5 ? 'Usable, pero mejorable' : 'Requiere ajustes';
+
+    return { level: level, label: label, checks: checks, charCount: charCount, wordCount: resolvedMsg.split(/\s+/).filter(Boolean).length, lineCount: lineCount, combos: countCombinations(template) };
+}
+
+// ── Render WhatsApp bubble ──
+function renderBubble(msg, num, injected) {
+    var timeH = 9 + Math.floor(Math.random() * 8);
+    var timeM = Math.floor(Math.random() * 60);
+    var timeStr = (timeH < 10 ? '0' : '') + timeH + ':' + (timeM < 10 ? '0' : '') + timeM;
+
+    var content = '';
+    if (injected) {
+        var parts = msg.split('\n');
+        content = '<span class="tb-wa-injected">' + escHTML(parts[0]) + '</span>\n' + escHTML(parts.slice(1).join('\n'));
+    } else {
+        content = escHTML(msg);
+    }
+
+    return '<div class="tb-wa-bubble">'
+        + '<span class="tb-wa-num">Variante ' + num + '</span>'
+        + content
+        + '<span class="tb-wa-time">' + timeStr + '</span>'
+        + '</div>';
+}
+
+function escHTML(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ── Generate single resolved message ──
+function tbResolveOne(template) {
+    var msg = resolveSpintax(template);
+    msg = tbReplaceVars(msg);
+    return msg;
+}
+
+// ── Update quality UI ──
+function tbUpdateQuality(template) {
+    if (!template.trim()) {
+        document.getElementById('tbSemaphore').style.display = 'none';
+        document.getElementById('tbStatsBar').style.display = 'none';
+        document.getElementById('tbInjectAlert').className = 'tb-inject-alert';
+        return;
+    }
+
+    var resolved = tbResolveOne(template);
+    var q = analyzeQuality(template, resolved);
+    var needsInject = !tbHasPresentation(template);
+
+    // Semaphore
+    var sem = document.getElementById('tbSemaphore');
+    sem.style.display = 'flex';
+    sem.className = 'tb-semaphore ' + q.level;
+    document.getElementById('tbSemText').textContent = q.label;
+
+    var checksEl = document.getElementById('tbChecks');
+    checksEl.innerHTML = q.checks.map(function(c) {
+        var cls = c.ok === true ? 'tb-check-ok' : c.ok === 'warn' ? 'tb-check-warn' : 'tb-check-fail';
+        var icon = c.ok === true ? '&#10003;' : c.ok === 'warn' ? '&#9888;' : '&#10007;';
+        return '<li class="' + cls + '"><span>' + icon + '</span> ' + c.text + '</li>';
+    }).join('');
+
+    // Stats bar
+    var statsBar = document.getElementById('tbStatsBar');
+    statsBar.style.display = 'grid';
+
+    var charStat = document.getElementById('tbStatChars');
+    charStat.querySelector('.tb-stat-val').textContent = q.charCount;
+    charStat.className = 'tb-stat' + (q.charCount > 400 ? ' danger' : q.charCount > 250 ? ' warn' : '');
+
+    var wordStat = document.getElementById('tbStatWords');
+    wordStat.querySelector('.tb-stat-val').textContent = q.wordCount;
+
+    var lineStat = document.getElementById('tbStatLines');
+    lineStat.querySelector('.tb-stat-val').textContent = q.lineCount;
+    lineStat.className = 'tb-stat' + (q.lineCount > 3 ? ' warn' : '');
+
+    var comboStat = document.getElementById('tbStatCombos');
+    comboStat.querySelector('.tb-stat-val').textContent = q.combos;
+    comboStat.className = 'tb-stat' + (q.combos < 3 ? ' warn' : '');
+
+    // Inject alert
+    var injectAlert = document.getElementById('tbInjectAlert');
+    injectAlert.className = 'tb-inject-alert' + (needsInject ? ' visible' : '');
+
+    // Validation box
+    var validation = document.getElementById('tbValidation');
+    var syntaxIssues = validateTemplate(template);
+    if (syntaxIssues.length > 0) {
+        validation.className = 'tb-validation warning';
+        validation.innerHTML = syntaxIssues.join('<br>');
+    } else {
+        validation.className = 'tb-validation ok';
+        validation.textContent = 'Sintaxis correcta';
+    }
+
+    // Counter
+    document.getElementById('tbCounter').innerHTML = 'Combinaciones: <strong>' + q.combos.toLocaleString() + '</strong>';
+}
+
+// ── Generate preview (1 bubble) ──
+function tbPreview() {
+    var template = document.getElementById('tbTemplate').value.trim();
+    if (!template) return;
+
+    tbUpdateQuality(template);
+
+    var needsInject = !tbHasPresentation(template);
+    var container = document.getElementById('tbWaContainer');
+    var msg = tbResolveOne(template);
+    if (needsInject) msg = tbInjectIntro(msg);
+
+    container.innerHTML = renderBubble(msg, 1, needsInject);
+}
+
+// ── Generate 5 variants ──
+function tbGenerate5() {
+    var template = document.getElementById('tbTemplate').value.trim();
+    if (!template) return;
+
+    tbUpdateQuality(template);
+
+    var needsInject = !tbHasPresentation(template);
+    var container = document.getElementById('tbWaContainer');
+    var html = '';
+
+    for (var i = 1; i <= 5; i++) {
+        var msg = tbResolveOne(template);
+        if (needsInject) msg = tbInjectIntro(msg);
+        html += renderBubble(msg, i, needsInject);
+    }
+
+    container.innerHTML = html;
+}
+
+// ── Insert variable at cursor ──
 function tbInsertVar(varName) {
-    const ta = document.getElementById('tbTemplate');
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const text = ta.value;
+    var ta = document.getElementById('tbTemplate');
+    var start = ta.selectionStart;
+    var end = ta.selectionEnd;
+    var text = ta.value;
     ta.value = text.substring(0, start) + varName + text.substring(end);
     ta.focus();
     ta.selectionStart = ta.selectionEnd = start + varName.length;
+    tbUpdateQuality(ta.value);
 }
 
-// Load example template into editor
+// ── Load example ──
 function tbLoadExample(el) {
-    const lines = el.innerText.split('\n');
-    // Skip the first line (label) and trim
-    const template = lines.slice(1).join('\n').trim();
+    var lines = el.innerText.split('\n');
+    var template = lines.slice(1).join('\n').trim();
     document.getElementById('tbTemplate').value = template;
-    tbPreview();
+    tbGenerate5();
 }
 
-// Copy template text to clipboard
+// ── Copy template ──
 function tbCopyTemplate() {
-    const template = document.getElementById('tbTemplate').value.trim();
-    if (!template) {
-        toast('No hay template para copiar', 'error');
-        return;
-    }
+    var template = document.getElementById('tbTemplate').value.trim();
+    if (!template) { toast('No hay template para copiar', 'error'); return; }
     navigator.clipboard.writeText(template).then(function() {
         toast('Template copiado al portapapeles', 'success');
     }).catch(function() {
-        // Fallback for older browsers
-        const ta = document.createElement('textarea');
+        var ta = document.createElement('textarea');
         ta.value = template;
         document.body.appendChild(ta);
         ta.select();
@@ -691,29 +918,9 @@ function tbCopyTemplate() {
     });
 }
 
-// Live validation as user types
+// ── Live validation on input ──
 document.getElementById('tbTemplate').addEventListener('input', function() {
-    const text = this.value;
-    const validation = document.getElementById('tbValidation');
-    const counter = document.getElementById('tbCounter');
-
-    if (!text.trim()) {
-        validation.style.display = 'none';
-        counter.innerHTML = '';
-        return;
-    }
-
-    const issues = validateTemplate(text);
-    if (issues.length > 0) {
-        validation.className = 'tb-validation warning';
-        validation.innerHTML = issues.join('<br>');
-    } else {
-        validation.className = 'tb-validation ok';
-        validation.textContent = 'Template valido';
-    }
-
-    const combos = countCombinations(text);
-    counter.innerHTML = 'Combinaciones posibles: <strong>' + combos.toLocaleString() + '</strong>';
+    tbUpdateQuality(this.value);
 });
 
 // ── Init ──
