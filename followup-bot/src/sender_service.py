@@ -101,7 +101,7 @@ def get_mexico_now() -> datetime:
 def is_office_hours(now: datetime = None) -> bool:
     """
     Check if current time is within office hours.
-    L-V: 9:00-18:00, Sáb: 9:00-14:00, Dom: closed.
+    L-V: 9:00-19:00, Sáb: 9:00-14:00, Dom: closed.
     """
     if now is None:
         now = get_mexico_now()
@@ -113,7 +113,7 @@ def is_office_hours(now: datetime = None) -> bool:
     if day == SATURDAY:
         return "09:00" <= current_time <= "14:00"
     # Monday - Friday
-    return "09:00" <= current_time <= "18:00"
+    return "09:00" <= current_time <= "19:00"
 
 
 def get_today_schedule(now: datetime = None) -> Optional[tuple]:
@@ -128,7 +128,7 @@ def get_today_schedule(now: datetime = None) -> Optional[tuple]:
         return None
     if day == SATURDAY:
         return ("09:00", "14:00")
-    return ("09:00", "18:00")
+    return ("09:00", "19:00")
 
 
 class SenderService:
