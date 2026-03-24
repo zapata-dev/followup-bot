@@ -1133,22 +1133,30 @@ async def generate_templates(file: UploadFile = File(...)):
             "resumen": resumen[:400] if resumen else "",
         })
 
-    prompt = f"""Eres experto en ventas y seguimiento de camiones (SelectTrucks / Go-On Zapata).
-Genera un template de WhatsApp personalizado de seguimiento para cada prospecto.
+    prompt = f"""Eres Estefanía, ejecutiva de ventas profesional y amable de SelectTrucks / Go-On Zapata.
+Genera un template de WhatsApp de seguimiento para cada prospecto.
 
 REGLAS OBLIGATORIAS:
 1. Máximo 2 oraciones cortas
 2. Usa spintax para variación: [opción1|opción2|opción3]
 3. Referencia ESPECÍFICA al vehículo o detalles del Resumen del prospecto
-4. Tono conversacional mexicano — NO corporativo
-5. NO incluyas nombre del vendedor ni empresa (se agrega automáticamente)
-6. NO incluyas saludo tipo "Hola Juan" ni nombre del cliente (se agrega automáticamente)
-7. Empieza directamente con el follow-up o recordatorio
-8. Si el Resumen menciona precio, financiamiento, enganche — refiérelo sutilmente
-9. Usa variables: {{vehiculo}} para el vehículo de interés
+4. Tono: PROFESIONAL y CÁLIDO — como ejecutiva de ventas, NO como amigos ni lenguaje de calle
+5. NO uses expresiones como "¿Qué onda?", "¿Cómo andas?", "¿Cómo vas?" ni términos coloquiales
+6. NO incluyas nombre del vendedor ni empresa (se agrega automáticamente)
+7. NO incluyas saludo tipo "Hola Juan" ni nombre del cliente (se agrega automáticamente)
+8. Empieza directamente con el follow-up o recordatorio
+9. Si el Resumen menciona precio, financiamiento, enganche — refiérelo sutilmente
+10. Usa variables: {{vehiculo}} para el vehículo de interés
 
-EJEMPLO BUENO:
-{{"id": 0, "template": "[Hace tiempo|Anteriormente] [nos preguntaste|te interesaste] por {{vehiculo}}. ¿[Sigues evaluando opciones|Ya resolviste tu búsqueda|Todavía lo consideras]?"}}
+TONO CORRECTO — ejemplos:
+- "Quería darle seguimiento a su interés en {{vehiculo}}. ¿Sigue siendo una opción para usted?"
+- "Estuve revisando las opciones para {{vehiculo}} y me gustaría compartirle algunas novedades."
+- "Hace unos días platicamos sobre {{vehiculo}}. ¿Ha tenido oportunidad de considerarlo?"
+
+TONO INCORRECTO (evitar):
+- "¿Qué onda con {{vehiculo}}?" ← demasiado coloquial
+- "¿Cómo andas?" ← lenguaje de calle
+- "¿Ya te decidiste?" ← presionante y poco profesional
 
 PROSPECTOS:
 {json.dumps(contacts_for_ai, ensure_ascii=False, indent=2)}
@@ -1156,21 +1164,30 @@ PROSPECTOS:
 Responde ÚNICAMENTE con un JSON array (sin markdown):
 [{{"id": 0, "template": "..."}}, ...]"""
 
-    messages = [{"role": "user", "content": prompt}]
+    # ── Call AI in chunks of 20 to avoid token limits ──
+    CHUNK_SIZE = 20
+    template_map: dict = {}
 
-    try:
-        ai_response = await _llm_completion(messages, max_tokens=2000, temperature=0.85)
-        # Strip markdown code fences if present
-        ai_clean = ai_response.strip()
-        if ai_clean.startswith("```"):
-            ai_clean = "\n".join(ai_clean.split("\n")[1:])
-        if ai_clean.endswith("```"):
-            ai_clean = "\n".join(ai_clean.split("\n")[:-1])
-        templates_list = json.loads(ai_clean.strip())
-        template_map = {item["id"]: item["template"] for item in templates_list}
-    except Exception as e:
-        logger.error(f"❌ AI template generation failed: {e}")
-        return {"error": f"Error al generar templates: {e}"}
+    for chunk_start in range(0, len(contacts_for_ai), CHUNK_SIZE):
+        chunk = contacts_for_ai[chunk_start: chunk_start + CHUNK_SIZE]
+        chunk_prompt = prompt.replace(
+            json.dumps(contacts_for_ai, ensure_ascii=False, indent=2),
+            json.dumps(chunk, ensure_ascii=False, indent=2),
+        )
+        messages = [{"role": "user", "content": chunk_prompt}]
+        try:
+            ai_response = await _llm_completion(messages, max_tokens=4000, temperature=0.85)
+            ai_clean = ai_response.strip()
+            if ai_clean.startswith("```"):
+                ai_clean = "\n".join(ai_clean.split("\n")[1:])
+            if ai_clean.endswith("```"):
+                ai_clean = "\n".join(ai_clean.split("\n")[:-1])
+            templates_list = json.loads(ai_clean.strip())
+            for item in templates_list:
+                template_map[item["id"]] = item["template"]
+        except Exception as e:
+            logger.error(f"❌ AI template generation failed on chunk {chunk_start}: {e}")
+            return {"error": f"Error al generar templates: {e}"}
 
     # ── Merge templates back into rows ──
     for i, row in enumerate(rows):

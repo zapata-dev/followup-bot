@@ -1269,15 +1269,28 @@ async function csvGenerate() {
         const lines = text.split('\n').filter(l => l.trim());
         const totalRows = Math.max(0, lines.length - 1);
 
+        // Parse CSV line respecting quoted fields
+        function parseCsvLine(line) {
+            const cells = []; let cur = ''; let inQ = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"') { inQ = !inQ; }
+                else if (ch === ',' && !inQ) { cells.push(cur.trim()); cur = ''; }
+                else { cur += ch; }
+            }
+            cells.push(cur.trim());
+            return cells;
+        }
+
         // Find Template column
-        const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+        const headers = parseCsvLine(lines[0]).map(h => h.replace(/^"|"$/g, '').trim());
         const tmplIdx = headers.findIndex(h => h.toLowerCase() === 'template');
         const nameIdx = headers.findIndex(h => ['elemento','nombre','name'].some(k => h.toLowerCase().includes(k)));
 
         let previewHtml = '';
         const previewLines = lines.slice(1, 6); // show up to 5
         previewLines.forEach(line => {
-            const cells = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+            const cells = parseCsvLine(line).map(c => c.replace(/^"|"$/g, '').trim());
             const name = nameIdx >= 0 ? (cells[nameIdx] || 'Sin nombre') : 'Contacto';
             const tmpl = tmplIdx >= 0 ? (cells[tmplIdx] || '—') : '—';
             previewHtml += '<div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:12px; margin-bottom:8px;">'
