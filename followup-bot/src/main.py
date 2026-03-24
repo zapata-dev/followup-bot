@@ -21,9 +21,12 @@ from contextlib import asynccontextmanager
 from collections import OrderedDict
 from typing import Any, Dict, Optional
 
+import csv
+import io
+
 import httpx
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, UploadFile, File
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic_settings import BaseSettings
 
 from src.memory_store import MemoryStore
@@ -1062,3 +1065,127 @@ async def force_cache_sync():
     await _sync_contacts_cache()
     stats = await state.monday_queue.get_queue_stats()
     return {"status": "synced", "cache_contacts": stats["cache_contacts"]}
+
+
+# ============================================================
+# CSV TEMPLATE GENERATOR
+# ============================================================
+@app.post("/admin/generate-templates")
+async def generate_templates(file: UploadFile = File(...)):
+    """
+    Accept a Monday.com CSV export, generate a personalized WhatsApp template
+    for each contact using AI (based on their Resumen/Notas/Vehículo), and
+    return the CSV with the Template column populated.
+
+    Column detection is flexible: searches case-insensitively for
+    'resumen', 'vehiculo'/'vehículo', 'nombre'/'elemento', 'template'.
+    """
+    from src.conversation_logic import _llm_completion
+
+    # ── Read CSV ──
+    raw = await file.read()
+    try:
+        content = raw.decode("utf-8-sig")  # strip BOM if present
+    except UnicodeDecodeError:
+        content = raw.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(content))
+    rows = list(reader)
+    if not rows:
+        return {"error": "CSV vacío o sin filas"}
+
+    fieldnames = reader.fieldnames or []
+
+    # ── Column mapping (case-insensitive) ──
+    def _find_col(keywords: list) -> Optional[str]:
+        for kw in keywords:
+            for col in fieldnames:
+                if kw in col.lower().replace("í", "i").replace("é", "e"):
+                    return col
+        return None
+
+    col_nombre   = _find_col(["elemento", "nombre", "name", "contacto"])
+    col_vehiculo = _find_col(["vehiculo", "vehicle", "modelo"])
+    col_resumen  = _find_col(["resumen", "resumen", "summary", "nota"])
+    col_template = _find_col(["template"])
+
+    # Add Template column if missing
+    if not col_template:
+        col_template = "Template"
+        fieldnames = list(fieldnames) + [col_template]
+
+    logger.info(
+        f"📋 generate-templates: {len(rows)} rows | "
+        f"nombre={col_nombre} vehiculo={col_vehiculo} "
+        f"resumen={col_resumen} template={col_template}"
+    )
+
+    # ── Build batch AI prompt ──
+    contacts_for_ai = []
+    for i, row in enumerate(rows):
+        nombre   = row.get(col_nombre, "").strip()   if col_nombre   else ""
+        vehiculo = row.get(col_vehiculo, "").strip() if col_vehiculo else ""
+        resumen  = row.get(col_resumen, "").strip()  if col_resumen  else ""
+        contacts_for_ai.append({
+            "id": i,
+            "nombre": nombre or "cliente",
+            "vehiculo": vehiculo or "la unidad",
+            "resumen": resumen[:400] if resumen else "",
+        })
+
+    prompt = f"""Eres experto en ventas y seguimiento de camiones (SelectTrucks / Go-On Zapata).
+Genera un template de WhatsApp personalizado de seguimiento para cada prospecto.
+
+REGLAS OBLIGATORIAS:
+1. Máximo 2 oraciones cortas
+2. Usa spintax para variación: [opción1|opción2|opción3]
+3. Referencia ESPECÍFICA al vehículo o detalles del Resumen del prospecto
+4. Tono conversacional mexicano — NO corporativo
+5. NO incluyas nombre del vendedor ni empresa (se agrega automáticamente)
+6. NO incluyas saludo tipo "Hola Juan" ni nombre del cliente (se agrega automáticamente)
+7. Empieza directamente con el follow-up o recordatorio
+8. Si el Resumen menciona precio, financiamiento, enganche — refiérelo sutilmente
+9. Usa variables: {{vehiculo}} para el vehículo de interés
+
+EJEMPLO BUENO:
+{{"id": 0, "template": "[Hace tiempo|Anteriormente] [nos preguntaste|te interesaste] por {{vehiculo}}. ¿[Sigues evaluando opciones|Ya resolviste tu búsqueda|Todavía lo consideras]?"}}
+
+PROSPECTOS:
+{json.dumps(contacts_for_ai, ensure_ascii=False, indent=2)}
+
+Responde ÚNICAMENTE con un JSON array (sin markdown):
+[{{"id": 0, "template": "..."}}, ...]"""
+
+    messages = [{"role": "user", "content": prompt}]
+
+    try:
+        ai_response = await _llm_completion(messages, max_tokens=2000, temperature=0.85)
+        # Strip markdown code fences if present
+        ai_clean = ai_response.strip()
+        if ai_clean.startswith("```"):
+            ai_clean = "\n".join(ai_clean.split("\n")[1:])
+        if ai_clean.endswith("```"):
+            ai_clean = "\n".join(ai_clean.split("\n")[:-1])
+        templates_list = json.loads(ai_clean.strip())
+        template_map = {item["id"]: item["template"] for item in templates_list}
+    except Exception as e:
+        logger.error(f"❌ AI template generation failed: {e}")
+        return {"error": f"Error al generar templates: {e}"}
+
+    # ── Merge templates back into rows ──
+    for i, row in enumerate(rows):
+        row[col_template] = template_map.get(i, "")
+
+    # ── Write output CSV ──
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    output.seek(0)
+
+    filename = f"templates_generados_{len(rows)}_contactos.csv"
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
