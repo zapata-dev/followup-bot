@@ -1176,9 +1176,13 @@ Responde ÚNICAMENTE con un JSON array (sin markdown):
     for i, row in enumerate(rows):
         row[col_template] = template_map.get(i, "")
 
-    # ── Write output CSV ──
+    # ── Write output CSV (drop noisy "Duplicado" columns from Monday export) ──
+    clean_fieldnames = [
+        col for col in fieldnames
+        if "duplicado" not in col.lower()
+    ]
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+    writer = csv.DictWriter(output, fieldnames=clean_fieldnames, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(rows)
     output.seek(0)
