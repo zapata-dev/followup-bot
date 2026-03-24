@@ -236,6 +236,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div class="tab-nav">
         <button class="tab-btn active" onclick="switchTab('campaigns')">Campanas</button>
         <button class="tab-btn" onclick="switchTab('builder')">Constructor de Templates</button>
+        <button class="tab-btn" onclick="switchTab('csvgen')">Generador CSV</button>
     </div>
 
     <!-- ═══════════ TAB 1: CAMPAIGNS ═══════════ -->
@@ -503,6 +504,82 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             </div>
         </div>
     </div>
+
+    <!-- ═══════════ TAB 3: CSV TEMPLATE GENERATOR ═══════════ -->
+    <div class="tab-content" id="tab-csvgen">
+        <div style="max-width: 700px; margin: 0 auto;">
+
+            <div class="tb-panel" style="margin-bottom: 24px;">
+                <h3>Generador de Templates Personalizados por CSV</h3>
+                <p style="font-size:13px; color:#94a3b8; margin-top:8px; line-height:1.6;">
+                    Sube tu exportación de Monday.com (CSV). La IA leerá el <strong>Resumen</strong>, <strong>Vehículo</strong> y <strong>Nombre</strong>
+                    de cada prospecto y generará un template personalizado con spintax para cada uno.
+                    Descargas el mismo CSV con la columna <strong>Template</strong> ya rellenada, listo para importar.
+                </p>
+
+                <div style="margin-top: 20px;">
+                    <label class="tb-label">Archivo CSV (exportación de Monday)</label>
+                    <input type="file" id="csvFileInput" accept=".csv" style="
+                        display: block; width: 100%; padding: 12px 14px;
+                        border: 2px dashed #334155; border-radius: 8px;
+                        background: #0f172a; color: #e2e8f0; font-size: 14px;
+                        cursor: pointer; outline: none; margin-top: 6px;
+                    " onchange="csvFileSelected(this)"/>
+                    <p id="csvFileHint" style="font-size:12px; color:#64748b; margin-top:6px; font-style:italic;">
+                        Ningún archivo seleccionado
+                    </p>
+                </div>
+
+                <div style="margin-top: 20px; padding: 14px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; font-size: 12px; color: #64748b;">
+                    <strong style="color:#94a3b8;">Columnas que detecta automáticamente:</strong>
+                    <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                        <span style="background:#1e293b; border:1px solid #334155; padding:3px 10px; border-radius:6px; color:#94a3b8; font-family:monospace;">Elemento / Nombre</span>
+                        <span style="background:#1e293b; border:1px solid #334155; padding:3px 10px; border-radius:6px; color:#94a3b8; font-family:monospace;">Vehículo / Vehiculo</span>
+                        <span style="background:#1e293b; border:1px solid #334155; padding:3px 10px; border-radius:6px; color:#94a3b8; font-family:monospace;">Resumen / Notas</span>
+                        <span style="background:#1e293b; border:1px solid #334155; padding:3px 10px; border-radius:6px; color:#22d3ee; font-family:monospace;">Template ← se llena</span>
+                    </div>
+                </div>
+
+                <div id="csvPreviewBox" style="display:none; margin-top:20px;">
+                    <div class="tb-label" style="margin-bottom:8px;">Vista previa del CSV cargado</div>
+                    <div id="csvPreviewTable" style="overflow-x:auto; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:12px; font-size:12px; color:#94a3b8; font-family:monospace; max-height:200px; overflow-y:auto;"></div>
+                    <p id="csvRowCount" style="font-size:12px; color:#64748b; margin-top:8px;"></p>
+                </div>
+
+                <div style="margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                    <button class="btn btn-start" id="csvGenerateBtn" onclick="csvGenerate()" disabled style="font-size:15px; padding:12px 32px;">
+                        Generar Templates con IA
+                    </button>
+                    <span id="csvSpinner" style="display:none; color:#94a3b8; font-size:13px;">
+                        <span class="spinner"></span>&nbsp; Procesando con IA, espera un momento...
+                    </span>
+                </div>
+            </div>
+
+            <div id="csvResultBox" style="display:none;">
+                <div class="tb-panel" style="border-color: #22c55e;">
+                    <h3 style="color:#22c55e;">Templates generados</h3>
+                    <p id="csvResultSummary" style="font-size:13px; color:#94a3b8; margin-top:6px;"></p>
+
+                    <div id="csvResultPreview" style="margin-top:16px; max-height:320px; overflow-y:auto; display: flex; flex-direction: column; gap: 12px;"></div>
+
+                    <div style="margin-top: 20px; display: flex; gap: 10px;">
+                        <button class="btn btn-start" onclick="csvDownload()">Descargar CSV con Templates</button>
+                        <button class="btn btn-refresh" onclick="csvReset()">Nueva carga</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="csvErrorBox" style="display:none;">
+                <div class="tb-panel" style="border-color: #ef4444;">
+                    <h3 style="color:#ef4444;">Error al generar</h3>
+                    <p id="csvErrorMsg" style="font-size:13px; color:#fca5a5; margin-top:6px;"></p>
+                    <button class="btn btn-refresh" onclick="csvReset()" style="margin-top:12px;">Intentar de nuevo</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
@@ -699,7 +776,7 @@ function switchTab(tabName) {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
     // Activate selected
-    const tabs = { 'campaigns': 0, 'builder': 1 };
+    const tabs = { 'campaigns': 0, 'builder': 1, 'csvgen': 2 };
     document.querySelectorAll('.tab-btn')[tabs[tabName]].classList.add('active');
     document.getElementById('tab-' + tabName).classList.add('active');
 }
@@ -1102,6 +1179,153 @@ function tbCampaignChanged() {
 document.getElementById('tbTemplate').addEventListener('input', function() {
     tbUpdateQuality(this.value);
 });
+
+// ══════════════════════════════════════════
+// CSV TEMPLATE GENERATOR
+// ══════════════════════════════════════════
+let _csvFile = null;
+let _csvBlob = null;
+let _csvFilename = 'templates_generados.csv';
+
+function csvFileSelected(input) {
+    _csvFile = input.files[0];
+    _csvBlob = null;
+    document.getElementById('csvResultBox').style.display = 'none';
+    document.getElementById('csvErrorBox').style.display = 'none';
+
+    if (!_csvFile) {
+        document.getElementById('csvFileHint').textContent = 'Ningún archivo seleccionado';
+        document.getElementById('csvPreviewBox').style.display = 'none';
+        document.getElementById('csvGenerateBtn').disabled = true;
+        return;
+    }
+
+    document.getElementById('csvFileHint').textContent = _csvFile.name + ' (' + (_csvFile.size / 1024).toFixed(1) + ' KB)';
+    document.getElementById('csvGenerateBtn').disabled = false;
+
+    // Parse locally for preview
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+        const lines = text.split('\n').filter(l => l.trim());
+        const rowCount = Math.max(0, lines.length - 1);
+        document.getElementById('csvRowCount').textContent = rowCount + ' contactos detectados';
+
+        // Simple table preview (first 5 rows)
+        if (lines.length > 0) {
+            const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+            let tableHtml = '<table style="border-collapse:collapse; width:100%;">';
+            tableHtml += '<tr>' + headers.map(h => '<th style="padding:4px 8px; border-bottom:1px solid #334155; color:#22d3ee; white-space:nowrap;">' + h + '</th>').join('') + '</tr>';
+            const previewRows = lines.slice(1, 4);
+            previewRows.forEach(row => {
+                const cells = row.split(',').map(c => c.replace(/^"|"$/g, '').trim().substring(0, 40));
+                tableHtml += '<tr>' + cells.map(c => '<td style="padding:4px 8px; border-bottom:1px solid #1e293b; color:#94a3b8;">' + (c || '—') + '</td>').join('') + '</tr>';
+            });
+            tableHtml += '</table>';
+            document.getElementById('csvPreviewTable').innerHTML = tableHtml;
+        }
+        document.getElementById('csvPreviewBox').style.display = 'block';
+    };
+    reader.readAsText(_csvFile, 'UTF-8');
+}
+
+async function csvGenerate() {
+    if (!_csvFile) { toast('Selecciona un archivo CSV primero', 'error'); return; }
+
+    document.getElementById('csvGenerateBtn').disabled = true;
+    document.getElementById('csvSpinner').style.display = 'inline-flex';
+    document.getElementById('csvResultBox').style.display = 'none';
+    document.getElementById('csvErrorBox').style.display = 'none';
+
+    try {
+        const formData = new FormData();
+        formData.append('file', _csvFile);
+
+        const resp = await fetch(BASE + '/admin/generate-templates', {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({error: 'Error desconocido'}));
+            throw new Error(err.error || 'HTTP ' + resp.status);
+        }
+
+        // Check content-type: CSV = success, JSON = error
+        const ct = resp.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+            const err = await resp.json();
+            throw new Error(err.error || 'Error al procesar');
+        }
+
+        // Download blob
+        _csvBlob = await resp.blob();
+        const cdHeader = resp.headers.get('Content-Disposition') || '';
+        const fnMatch = cdHeader.match(/filename="([^"]+)"/);
+        _csvFilename = fnMatch ? fnMatch[1] : 'templates_generados.csv';
+
+        // Parse the returned CSV for preview
+        const text = await _csvBlob.text();
+        const lines = text.split('\n').filter(l => l.trim());
+        const totalRows = Math.max(0, lines.length - 1);
+
+        // Find Template column
+        const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+        const tmplIdx = headers.findIndex(h => h.toLowerCase() === 'template');
+        const nameIdx = headers.findIndex(h => ['elemento','nombre','name'].some(k => h.toLowerCase().includes(k)));
+
+        let previewHtml = '';
+        const previewLines = lines.slice(1, 6); // show up to 5
+        previewLines.forEach(line => {
+            const cells = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+            const name = nameIdx >= 0 ? (cells[nameIdx] || 'Sin nombre') : 'Contacto';
+            const tmpl = tmplIdx >= 0 ? (cells[tmplIdx] || '—') : '—';
+            previewHtml += '<div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:12px; margin-bottom:8px;">'
+                + '<div style="font-size:12px; color:#64748b; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">' + name + '</div>'
+                + '<div style="font-size:13px; color:#e2e8f0; line-height:1.6; font-family:monospace;">' + tmpl + '</div>'
+                + '</div>';
+        });
+        if (totalRows > 5) {
+            previewHtml += '<div style="font-size:12px; color:#64748b; text-align:center; padding:8px;">... y ' + (totalRows - 5) + ' más</div>';
+        }
+
+        document.getElementById('csvResultSummary').textContent = totalRows + ' templates generados. Revisa la muestra y descarga el CSV.';
+        document.getElementById('csvResultPreview').innerHTML = previewHtml;
+        document.getElementById('csvResultBox').style.display = 'block';
+        toast('Templates generados con éxito', 'success');
+
+    } catch (e) {
+        document.getElementById('csvErrorMsg').textContent = e.message;
+        document.getElementById('csvErrorBox').style.display = 'block';
+        toast('Error: ' + e.message, 'error');
+    } finally {
+        document.getElementById('csvGenerateBtn').disabled = false;
+        document.getElementById('csvSpinner').style.display = 'none';
+    }
+}
+
+function csvDownload() {
+    if (!_csvBlob) { toast('Primero genera los templates', 'error'); return; }
+    const url = URL.createObjectURL(_csvBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = _csvFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function csvReset() {
+    _csvFile = null;
+    _csvBlob = null;
+    document.getElementById('csvFileInput').value = '';
+    document.getElementById('csvFileHint').textContent = 'Ningún archivo seleccionado';
+    document.getElementById('csvPreviewBox').style.display = 'none';
+    document.getElementById('csvResultBox').style.display = 'none';
+    document.getElementById('csvErrorBox').style.display = 'none';
+    document.getElementById('csvGenerateBtn').disabled = true;
+}
 
 // ── Init ──
 loadAll();
