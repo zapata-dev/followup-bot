@@ -90,6 +90,80 @@ _SPIN_FOLLOW_SERVICE = [
     "¿Cómo ha sido tu experiencia con el {vehiculo}?",
 ]
 
+# ──────────────────────────────────────────────────────────
+# ESTILO B — Statement abierto, sin pregunta directa (40%)
+# Enuncia el contexto y deja espacio. Más natural, menos vendedor.
+# ──────────────────────────────────────────────────────────
+
+_SPIN_STATEMENT_LOST = [
+    "Vi que en su momento preguntaste por el {vehiculo}. Por aquí si necesitas algo.",
+    "Tenemos unidades {vehiculo} disponibles con buenas condiciones ahorita.",
+    "Pasé a saludarte — recuerdo que habías preguntado por el {vehiculo}.",
+    "Hace rato tenías interés en el {vehiculo}. Aquí estamos cuando lo necesites.",
+    "Por acá de {company_name}, te escribo por lo del {vehiculo}.",
+]
+
+_SPIN_STATEMENT_ASSIGNED = [
+    "Te asignaron con nosotros para el tema del {vehiculo}. Aquí estamos para ayudarte.",
+    "Quedaste registrado con nosotros para el {vehiculo}. Por aquí cuando quieras.",
+    "Vi que tienes una consulta sobre el {vehiculo} con nosotros.",
+    "Por acá de {company_name} para atenderte con lo del {vehiculo}.",
+    "Nos asignaron para darte seguimiento con el {vehiculo}.",
+]
+
+_SPIN_STATEMENT_APPOINTMENT = [
+    "Qué bueno que pudiste venir a ver el {vehiculo}. Por aquí si tienes alguna duda.",
+    "Espero que la visita para el {vehiculo} haya sido de utilidad.",
+    "Pasé a saludarte después de tu visita para ver el {vehiculo}.",
+    "Me da gusto que hayas podido venir a conocer el {vehiculo}.",
+    "Quedamos a tus órdenes después de tu cita para el {vehiculo}.",
+]
+
+_SPIN_STATEMENT_SERVICE = [
+    "Solo paso a saludar y ver cómo está todo con el {vehiculo}.",
+    "Espero que todo vaya bien con tu {vehiculo}. Por aquí si necesitas algo.",
+    "Quedamos a tus órdenes con cualquier cosa del {vehiculo}.",
+    "Pasé a saludar y ver cómo te ha ido con el {vehiculo}.",
+    "Por acá de {company_name}, aquí para lo que necesites con el {vehiculo}.",
+]
+
+# ──────────────────────────────────────────────────────────
+# ESTILO C — Casual corto (25%)
+# Mensaje compacto de una línea, sin estructura de ventas visible.
+# ──────────────────────────────────────────────────────────
+
+_SPIN_CASUAL_LOST = [
+    "Hola {nombre}! {bot_name} de {company_name} por aquí. ¿Cómo vas con lo del {vehiculo}?",
+    "Qué tal {nombre}, {bot_name} de {company_name}. ¿Sigues buscando {vehiculo}?",
+    "Hola {nombre} 👋 {bot_name}, {company_name}. Vi que preguntaste por el {vehiculo}.",
+    "Hola {nombre}! ¿Cómo estás? {bot_name} de {company_name} por aquí.",
+    "{nombre}! Por acá {bot_name} de {company_name}. ¿Todo bien?",
+]
+
+_SPIN_CASUAL_ASSIGNED = [
+    "Hola {nombre}! {bot_name} de {company_name}. ¿Te pudieron ayudar con lo del {vehiculo}?",
+    "Qué tal {nombre}, ¿cómo quedaste con lo del {vehiculo}? {bot_name}, {company_name}.",
+    "Hola {nombre} 👋 {bot_name} de {company_name}. ¿Quedaste bien atendido?",
+    "Hola {nombre}! ¿Cómo te fue con lo del {vehiculo}? {bot_name}, {company_name}.",
+    "{nombre}! {bot_name} de {company_name}. ¿Te dieron respuesta sobre el {vehiculo}?",
+]
+
+_SPIN_CASUAL_APPOINTMENT = [
+    "Hola {nombre}! {bot_name} de {company_name}. ¿Qué tal te fue con el {vehiculo}?",
+    "Qué tal {nombre}, ¿cómo te pareció el {vehiculo}? {bot_name}, {company_name}.",
+    "Hola {nombre} 👋 ¿Te convenció el {vehiculo}? {bot_name}, {company_name}.",
+    "Hola {nombre}! ¿Qué impresión te llevaste del {vehiculo}? {bot_name}.",
+    "{nombre}! {bot_name} de {company_name}. ¿Qué tal el {vehiculo}?",
+]
+
+_SPIN_CASUAL_SERVICE = [
+    "Hola {nombre}! {bot_name} de {company_name}. ¿Cómo va todo con el {vehiculo}?",
+    "Qué tal {nombre}, ¿cómo está tu {vehiculo}? {bot_name}, {company_name}.",
+    "Hola {nombre} 👋 {bot_name} de {company_name}. ¿Todo bien con el {vehiculo}?",
+    "Hola {nombre}! ¿Cómo te han atendido? {bot_name}, {company_name}.",
+    "{nombre}! {bot_name} de {company_name}. ¿Cómo va la experiencia con el {vehiculo}?",
+]
+
 
 def _spin(options: List[str], **kwargs) -> str:
     """Pick a random variant and format with kwargs."""
@@ -299,11 +373,16 @@ class SenderService:
 
     # ──────────────────────────────────────────────────────────
     # MESSAGE SPINNING — nunca dos mensajes iguales
+    # 3 estilos por tipo de campaña, elegidos con pesos:
+    #   A) question  35% — pregunta directa (comportamiento anterior)
+    #   B) statement 40% — enunciado abierto, sin pregunta
+    #   C) casual    25% — mensaje corto de una línea
     # ──────────────────────────────────────────────────────────
     def _spin_message(self, campaign_type: str, contact: Dict) -> str:
         """
-        Genera un mensaje con variación aleatoria según el tipo de campaña.
-        Combina greeting + intro + cuerpo de forma que ningún par sea idéntico.
+        Genera un mensaje con variación aleatoria de estilo y contenido.
+        Mezcla 3 estructuras distintas para que los filtros de Meta no detecten
+        un patrón semántico uniforme (todos los mensajes terminando en pregunta).
         """
         raw_name = contact.get("name", "").split("|")[0].strip() or "cliente"
         vehicle = contact.get("vehicle", "").strip() or "tu unidad de interés"
@@ -315,28 +394,39 @@ class SenderService:
             "company_url": self.company_url,
         }
 
-        if campaign_type == "lost_lead":
-            greeting = _spin(_SPIN_GREETINGS, **ctx)
-            intro = _spin(_SPIN_INTRO_LOST, **ctx)
-            body = _spin(_SPIN_FOLLOW_LOST, **ctx)
-            return f"{greeting}, {intro}\n{body}"
+        # Elegir estilo con pesos: 35% pregunta, 40% statement, 25% casual
+        style = random.choices(
+            ["question", "statement", "casual"],
+            weights=[35, 40, 25]
+        )[0]
 
-        if campaign_type == "assigned_lead":
-            greeting = _spin(_SPIN_GREETINGS, **ctx)
-            intro = _spin(_SPIN_INTRO_LOST, **ctx)
-            body = _spin(_SPIN_FOLLOW_ASSIGNED, **ctx)
-            return f"{greeting}, {intro}\n{body}"
+        # Mapas de variantes por tipo de campaña y estilo
+        _question = {
+            "lost_lead":            _SPIN_FOLLOW_LOST,
+            "assigned_lead":        _SPIN_FOLLOW_ASSIGNED,
+            "attended_appointment": _SPIN_FOLLOW_APPOINTMENT,
+            "customer_service":     _SPIN_FOLLOW_SERVICE,
+        }
+        _statement = {
+            "lost_lead":            _SPIN_STATEMENT_LOST,
+            "assigned_lead":        _SPIN_STATEMENT_ASSIGNED,
+            "attended_appointment": _SPIN_STATEMENT_APPOINTMENT,
+            "customer_service":     _SPIN_STATEMENT_SERVICE,
+        }
+        _casual = {
+            "lost_lead":            _SPIN_CASUAL_LOST,
+            "assigned_lead":        _SPIN_CASUAL_ASSIGNED,
+            "attended_appointment": _SPIN_CASUAL_APPOINTMENT,
+            "customer_service":     _SPIN_CASUAL_SERVICE,
+        }
 
-        if campaign_type == "attended_appointment":
+        if campaign_type in _question:
+            if style == "casual":
+                return _spin(_casual[campaign_type], **ctx)
             greeting = _spin(_SPIN_GREETINGS, **ctx)
             intro = _spin(_SPIN_INTRO_LOST, **ctx)
-            body = _spin(_SPIN_FOLLOW_APPOINTMENT, **ctx)
-            return f"{greeting}, {intro}\n{body}"
-
-        if campaign_type == "customer_service":
-            greeting = _spin(_SPIN_GREETINGS, **ctx)
-            intro = _spin(_SPIN_INTRO_LOST, **ctx)
-            body = _spin(_SPIN_FOLLOW_SERVICE, **ctx)
+            body_pool = _statement[campaign_type] if style == "statement" else _question[campaign_type]
+            body = _spin(body_pool, **ctx)
             return f"{greeting}, {intro}\n{body}"
 
         # Fallback: default template
