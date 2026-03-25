@@ -12,6 +12,7 @@ Estrategia anti-baneo para volumen alto (300-1000+ contactos):
 """
 import os
 import re
+import math
 import asyncio
 import random
 import logging
@@ -89,6 +90,18 @@ def _spin(options: List[str], **kwargs) -> str:
     return random.choice(options).format(**kwargs)
 
 
+def _human_delay(min_s: float, max_s: float) -> float:
+    """
+    Log-normal delay that mimics human timing variability.
+    Produces a natural spread around the midpoint of [min_s, max_s],
+    unlike uniform distribution which is statistically detectable as robotic.
+    """
+    midpoint = (min_s + max_s) / 2.0
+    mu = math.log(max(midpoint, 1.0)) - 0.15  # correction for sigma=0.55
+    delay = random.lognormvariate(mu, 0.55)
+    return max(min_s, min(max_s * 1.5, delay))
+
+
 def get_mexico_now() -> datetime:
     """Get current time in Mexico City timezone."""
     try:
@@ -98,27 +111,52 @@ def get_mexico_now() -> datetime:
         return datetime.now()
 
 
+# Per-day end-of-hours fuzz: consistent within a day, varies day to day.
+# Stored as {date_str: offset_minutes} where offset ∈ [-15, +15].
+_daily_end_fuzz: Dict[str, int] = {}
+
+
+def _get_daily_end_fuzz(date_str: str) -> int:
+    """Return a consistent ±15 min random offset for today's office-hours end.
+    Changes each day so the stop time is never the same two days in a row."""
+    if date_str not in _daily_end_fuzz:
+        _daily_end_fuzz.clear()
+        _daily_end_fuzz[date_str] = random.randint(-15, 15)
+    return _daily_end_fuzz[date_str]
+
+
 def is_office_hours(now: datetime = None) -> bool:
     """
     Check if current time is within office hours.
-    L-V: 9:00-19:00, Sáb: 9:00-14:00, Dom: closed.
+    L-V: 9:00–19:00 (±15 min fuzz on end), Sáb: 9:00–14:00 (±15 min), Dom: closed.
+    End-of-day fuzz is consistent within a day but varies day-to-day so the
+    stop time is never mechanically identical.
     """
     if now is None:
         now = get_mexico_now()
     day = now.weekday()
-    current_time = now.strftime("%H:%M")
 
     if day == SUNDAY:
         return False
+
+    current_min = now.hour * 60 + now.minute
+    start_min = 9 * 60  # 09:00 sharp
+
+    date_str = now.strftime("%Y-%m-%d")
+    fuzz = _get_daily_end_fuzz(date_str)
+
     if day == SATURDAY:
-        return "09:00" <= current_time <= "14:00"
-    # Monday - Friday
-    return "09:00" <= current_time <= "19:00"
+        end_min = 14 * 60 + fuzz  # 14:00 ± 15 min
+    else:
+        end_min = 19 * 60 + fuzz  # 19:00 ± 15 min
+
+    return start_min <= current_min <= end_min
 
 
 def get_today_schedule(now: datetime = None) -> Optional[tuple]:
     """
     Returns (start, end) for today's send window, or None if no sends today.
+    End reflects today's fuzz so the dashboard shows the real cutoff.
     """
     if now is None:
         now = get_mexico_now()
@@ -126,9 +164,16 @@ def get_today_schedule(now: datetime = None) -> Optional[tuple]:
 
     if day == SUNDAY:
         return None
+
+    date_str = now.strftime("%Y-%m-%d")
+    fuzz = _get_daily_end_fuzz(date_str)
+
     if day == SATURDAY:
-        return ("09:00", "14:00")
-    return ("09:00", "19:00")
+        end_h, end_m = divmod(14 * 60 + fuzz, 60)
+        return ("09:00", f"{end_h:02d}:{end_m:02d}")
+
+    end_h, end_m = divmod(19 * 60 + fuzz, 60)
+    return ("09:00", f"{end_h:02d}:{end_m:02d}")
 
 
 class SenderService:
@@ -138,10 +183,12 @@ class SenderService:
     Estrategia anti-baneo:
     - Semáforo global: solo UNA campaña puede enviar a la vez (no solapamiento)
     - Spinning: ningún mensaje es idéntico a otro
-    - Lotes de 10, pausa 3-6 min entre lotes
-    - Delay entre mensajes: 20-60s (aleatorio)
-    - Máximo 25/hora, 120/día
-    - L-V: 9am-6pm, Sáb: 9am-2pm, Dom: no envía
+    - Lotes de tamaño variable (batch_size ± 3), pausa con log-normal entre lotes
+    - Delay entre mensajes: log-normal (no uniforme) — distribución más humana
+    - Typing duration: velocidad variable (60-130 ms/char), max variable 7-12 s
+    - Horario de corte con ±15 min de fuzz diario (no corta siempre a la misma hora)
+    - Máximo configurable por hora y por día
+    - L-V: 9am-7pm, Sáb: 9am-2pm, Dom: no envía
     - Abort inmediato en Connection Closed (WhatsApp desconectado)
     """
 
@@ -372,7 +419,9 @@ class SenderService:
         # Un humano abre el chat, se ve "escribiendo..." unos segundos, y luego envía.
         try:
             presence_url = f"{self.evo_url}/chat/sendPresence/{self.evo_instance}"
-            typing_ms = min(len(text) * 80, 8000)  # ~80ms por carácter, max 8s
+            # Typing speed varies per message: 60–130 ms/char, max 7–12 s
+            chars_per_ms = random.uniform(60, 130)
+            typing_ms = int(min(len(text) * chars_per_ms, random.uniform(7000, 12000)))
             presence_body = {"number": jid, "presence": "composing", "delay": typing_ms}
             await http_client.post(presence_url, json=presence_body, headers=headers)
             # Esperar a que se muestre el estado "escribiendo" antes de enviar
@@ -497,6 +546,8 @@ class SenderService:
         errors = 0
         batch_count = 0
         consecutive_errors = 0
+        # Batch limit varies ±3 around config value so we never pause at the exact same count
+        batch_limit = random.randint(max(5, self.batch_size - 3), self.batch_size + 4)
 
         try:
             contacts = await monday_followup.get_pending_contacts(group_id, limit=1000)
@@ -557,14 +608,16 @@ class SenderService:
                         break
 
                     # ── Batch pause ──
-                    if batch_count >= self.batch_size:
-                        pause = random.uniform(self.batch_pause_min, self.batch_pause_max)
+                    if batch_count >= batch_limit:
+                        pause = _human_delay(self.batch_pause_min, self.batch_pause_max)
                         logger.info(
-                            f"☕ Batch pause: {sent} sent, resting {pause:.0f}s "
-                            f"before next batch..."
+                            f"☕ Batch pause: {sent} sent (batch of {batch_limit}), "
+                            f"resting {pause:.0f}s before next batch..."
                         )
                         await asyncio.sleep(pause)
                         batch_count = 0
+                        # New random batch limit for next batch
+                        batch_limit = random.randint(max(5, self.batch_size - 3), self.batch_size + 4)
 
                     # ── Get phone ──
                     phone = normalize_phone(contact.get("phone", ""))
@@ -584,9 +637,10 @@ class SenderService:
                         result = await self._send_whatsapp(phone, message, http_client)
 
                         # Delay DENTRO del lock: garantiza separación mínima entre envíos
-                        # aunque haya múltiples campañas activas
+                        # aunque haya múltiples campañas activas.
+                        # Log-normal distribution = timing humano (no robótico uniforme).
                         if not result.get("disconnected"):
-                            delay = random.uniform(self.delay_min, self.delay_max)
+                            delay = _human_delay(float(self.delay_min), float(self.delay_max))
                             logger.debug(f"⏳ Waiting {delay:.1f}s (global lock held)...")
                             await asyncio.sleep(delay)
 
