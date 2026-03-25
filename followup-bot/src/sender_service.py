@@ -2,13 +2,19 @@
 Sender Service — Motor de envío outbound con rate limiting.
 Lee contactos pendientes de Monday, envía por Evolution API, actualiza estatus.
 
-Estrategia anti-baneo para volumen alto (300-1000+ contactos):
-- Semáforo GLOBAL compartido entre todas las campañas activas (no se pueden solapar envíos)
-- Variación de mensajes (message spinning) para que ningún texto sea idéntico
-- Delay aleatorio variable entre mensajes (no uniforme)
-- Límite por hora y por día compartido entre campañas
-- Horario diferenciado: L-V 9-18, Sáb 9-14, Dom no envía
-- Abort inmediato si WhatsApp se desconecta (Connection Closed)
+Cadencia objetivo: ~18 mensajes/hora → 900-1100 conversaciones/semana
+  L-V  10h × 18/h = 180/día  ×5 = 900
+  Sáb   5h × 18/h =  90/día  ×1 =  90
+  Total semana                    ≈ 990
+
+Estrategia anti-baneo:
+- Delay entre mensajes: 3-4 min con distribución log-normal (no uniforme)
+- Horario de corte con ±15 min de fuzz diario
+- Batch size variable (±3 del configurado)
+- Typing duration variable (60-130 ms/char, max 7-12 s)
+- Semáforo GLOBAL: solo un mensaje a la vez entre todas las campañas
+- Spinning de mensajes: ningún texto idéntico
+- Abort inmediato si WhatsApp se desconecta
 """
 import os
 import re
@@ -208,16 +214,18 @@ class SenderService:
         self.evo_key = os.getenv("EVOLUTION_API_KEY", "")
         self.evo_instance = os.getenv("EVO_INSTANCE", "Seguimiento")
 
-        # Rate limiting — conservador para evitar ban de WhatsApp
-        self.delay_min = int(os.getenv("SEND_DELAY_MIN", "20"))
-        self.delay_max = int(os.getenv("SEND_DELAY_MAX", "60"))
-        self.max_per_hour = int(os.getenv("MAX_SENDS_PER_HOUR", "25"))
-        self.max_per_day = int(os.getenv("MAX_SENDS_PER_DAY", "120"))
+        # Rate limiting — ~18 mensajes/hora para alcanzar 900-1100 conversaciones/semana
+        # (L-V 10h × 18/h = 180/día × 5 = 900 | Sáb 5h × 18/h = 90 | Total ≈ 990/sem)
+        self.delay_min = int(os.getenv("SEND_DELAY_MIN", "180"))    # 3 min mínimo
+        self.delay_max = int(os.getenv("SEND_DELAY_MAX", "240"))    # 4 min máximo
+        self.max_per_hour = int(os.getenv("MAX_SENDS_PER_HOUR", "20"))
+        self.max_per_day = int(os.getenv("MAX_SENDS_PER_DAY", "200"))
 
-        # Batch settings — send N messages, then rest
+        # Batch settings — pausa breve cada N mensajes
+        # Con delays de 3-4 min ya no necesitamos pausas largas; 1.5-3 min es suficiente
         self.batch_size = int(os.getenv("BATCH_SIZE", "10"))
-        self.batch_pause_min = int(os.getenv("BATCH_PAUSE_MIN", "180"))   # 3 min
-        self.batch_pause_max = int(os.getenv("BATCH_PAUSE_MAX", "360"))   # 6 min
+        self.batch_pause_min = int(os.getenv("BATCH_PAUSE_MIN", "90"))    # 1.5 min
+        self.batch_pause_max = int(os.getenv("BATCH_PAUSE_MAX", "180"))   # 3 min
 
         # Default template (can be overridden per contact in Monday)
         self.default_template = os.getenv(
