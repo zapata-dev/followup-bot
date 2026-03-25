@@ -201,6 +201,9 @@ class SenderService:
         self._auto_resume_task: Optional[asyncio.Task] = None
         self._auto_resume_deps: Dict = {}
 
+        # Campaign queue: campaigns waiting for the active one to finish
+        self._campaign_queue: list = []  # list of dicts with start_campaign kwargs
+
     # ──────────────────────────────────────────────────────────
     # RATE LIMIT CHECKS
     # ──────────────────────────────────────────────────────────
@@ -419,10 +422,33 @@ class SenderService:
     # ──────────────────────────────────────────────────────────
     # CAMPAIGN EXECUTION
     # ──────────────────────────────────────────────────────────
+    def _any_campaign_active(self) -> bool:
+        """Return True if any campaign is currently running."""
+        return any(v for v in self._active_campaigns.values())
+
     async def start_campaign(self, group_id: str, memory_store=None, force: bool = False, monday_queue=None, bot_sent_ids=None) -> Dict:
-        """Start sending messages to all pending contacts in a Monday group."""
+        """Start sending messages to all pending contacts in a Monday group.
+        If another campaign is already running, the new one is queued and will
+        start automatically when the active campaign finishes."""
         if group_id in self._active_campaigns and self._active_campaigns[group_id]:
             return {"status": "already_running", "group_id": group_id}
+
+        # If another campaign is active, queue this one instead of running in parallel
+        if self._any_campaign_active():
+            # Avoid duplicate entries in the queue
+            already_queued = any(q["group_id"] == group_id for q in self._campaign_queue)
+            if already_queued:
+                return {"status": "already_queued", "group_id": group_id}
+            self._campaign_queue.append({
+                "group_id": group_id,
+                "memory_store": memory_store,
+                "force": force,
+                "monday_queue": monday_queue,
+                "bot_sent_ids": bot_sent_ids,
+            })
+            queue_position = len(self._campaign_queue)
+            logger.info(f"📋 Campaign {group_id} queued (position {queue_position})")
+            return {"status": "queued", "group_id": group_id, "queue_position": queue_position}
 
         # Limpiar flag de desconexión si se arranca manualmente
         self._whatsapp_disconnected = False
@@ -449,6 +475,9 @@ class SenderService:
         self._whatsapp_disconnected = True
         for gid in list(self._active_campaigns.keys()):
             self._active_campaigns[gid] = False
+        if self._campaign_queue:
+            logger.warning(f"🗑️ Clearing {len(self._campaign_queue)} queued campaigns due to abort")
+            self._campaign_queue.clear()
 
     async def _run_campaign(self, group_id: str, memory_store=None, force: bool = False, monday_queue=None, bot_sent_ids=None):
         """
@@ -643,6 +672,20 @@ class SenderService:
         finally:
             self._active_campaigns[group_id] = False
             logger.info(f"✅ Campaign {group_id} finished: {sent} sent, {errors} errors")
+            # Start next campaign in queue (if any)
+            if self._campaign_queue and not self._whatsapp_disconnected:
+                next_campaign = self._campaign_queue.pop(0)
+                next_gid = next_campaign["group_id"]
+                logger.info(f"📋 Starting next queued campaign: {next_gid} ({len(self._campaign_queue)} remaining in queue)")
+                self._paused_campaigns.discard(next_gid)
+                self._active_campaigns[next_gid] = True
+                asyncio.create_task(self._run_campaign(
+                    next_gid,
+                    next_campaign["memory_store"],
+                    force=next_campaign["force"],
+                    monday_queue=next_campaign["monday_queue"],
+                    bot_sent_ids=next_campaign["bot_sent_ids"],
+                ))
 
     # ──────────────────────────────────────────────────────────
     # AUTO-RESUME
@@ -710,6 +753,7 @@ class SenderService:
 
         return {
             "active_campaigns": {k: v for k, v in self._active_campaigns.items() if v},
+            "queued_campaigns": [q["group_id"] for q in self._campaign_queue],
             "paused_campaigns": list(self._paused_campaigns),
             "interrupted_campaigns": list(self._interrupted_campaigns),
             "whatsapp_disconnected": self._whatsapp_disconnected,
