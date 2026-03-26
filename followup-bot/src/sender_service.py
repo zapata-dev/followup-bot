@@ -595,6 +595,8 @@ class SenderService:
             })
             queue_position = len(self._campaign_queue)
             logger.info(f"📋 Campaign {group_id} queued (position {queue_position})")
+            # Mark all Pendiente contacts in Monday as "En Cola" in background
+            asyncio.create_task(monday_followup.mark_group_en_cola(group_id))
             return {"status": "queued", "group_id": group_id, "queue_position": queue_position}
 
         # Limpiar flag de desconexión si se arranca manualmente

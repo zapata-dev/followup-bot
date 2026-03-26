@@ -106,9 +106,9 @@ class MondayFollowupService:
         for item in items:
             col_map = {cv["id"]: cv.get("text", "") for cv in item.get("column_values", [])}
 
-            # Filter by status = "Pendiente" (case-insensitive)
+            # Filter by status = "Pendiente" or "En Cola" (case-insensitive)
             status = col_map.get(self.status_col_id, "").strip()
-            if status.lower() != "pendiente":
+            if status.lower() not in ("pendiente", "en cola"):
                 continue
 
             contacts.append({
@@ -480,6 +480,24 @@ class MondayFollowupService:
         await self.update_status(item_id, "Error", {
             self.error_col_id: error_msg[:500]
         })
+
+    async def mark_group_en_cola(self, group_id: str) -> int:
+        """
+        Update all 'Pendiente' contacts in a group to 'En Cola'.
+        Called when a campaign is queued while another is already running.
+        Returns count of updated contacts.
+        """
+        items = await self._get_group_items(group_id)
+        updated = 0
+        for item in items:
+            col_map = {cv["id"]: cv.get("text", "") for cv in item.get("column_values", [])}
+            status = col_map.get(self.status_col_id, "").strip()
+            if status.lower() == "pendiente":
+                await self.update_status(item["id"], "En Cola")
+                updated += 1
+                await asyncio.sleep(0.3)  # avoid Monday rate limits
+        logger.info(f"📋 Marked {updated} contacts as 'En Cola' in group {group_id}")
+        return updated
 
     # ──────────────────────────────────────────────────────────
     # NOTES: Add update/note to item
