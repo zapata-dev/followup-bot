@@ -2,13 +2,19 @@
 Sender Service — Motor de envío outbound con rate limiting.
 Lee contactos pendientes de Monday, envía por Evolution API, actualiza estatus.
 
-Estrategia anti-baneo para volumen alto (300-1000+ contactos):
-- Semáforo GLOBAL compartido entre todas las campañas activas (no se pueden solapar envíos)
-- Variación de mensajes (message spinning) para que ningún texto sea idéntico
-- Delay aleatorio variable entre mensajes (no uniforme)
-- Límite por hora y por día compartido entre campañas
-- Horario diferenciado: L-V 9-18, Sáb 9-14, Dom no envía
-- Abort inmediato si WhatsApp se desconecta (Connection Closed)
+Cadencia objetivo: ~18 mensajes/hora → 900-1100 conversaciones/semana
+  L-V  10h × 18/h = 180/día  ×5 = 900
+  Sáb   5h × 18/h =  90/día  ×1 =  90
+  Total semana                    ≈ 990
+
+Estrategia anti-baneo:
+- Delay entre mensajes: 3-4 min con distribución log-normal (no uniforme)
+- Horario de corte con ±15 min de fuzz diario
+- Batch size variable (±3 del configurado)
+- Typing duration variable (60-130 ms/char, max 7-12 s)
+- Semáforo GLOBAL: solo un mensaje a la vez entre todas las campañas
+- Spinning de mensajes: ningún texto idéntico
+- Abort inmediato si WhatsApp se desconecta
 """
 import os
 import re
@@ -82,6 +88,80 @@ _SPIN_FOLLOW_SERVICE = [
     "¿Te han dado buen servicio con el {vehiculo}?",
     "¿Qué tal la atención que has recibido?",
     "¿Cómo ha sido tu experiencia con el {vehiculo}?",
+]
+
+# ──────────────────────────────────────────────────────────
+# ESTILO B — Statement abierto, sin pregunta directa (40%)
+# Enuncia el contexto y deja espacio. Más natural, menos vendedor.
+# ──────────────────────────────────────────────────────────
+
+_SPIN_STATEMENT_LOST = [
+    "Vi que en su momento preguntaste por el {vehiculo}. Por aquí si necesitas algo.",
+    "Tenemos unidades {vehiculo} disponibles con buenas condiciones ahorita.",
+    "Pasé a saludarte — recuerdo que habías preguntado por el {vehiculo}.",
+    "Hace rato tenías interés en el {vehiculo}. Aquí estamos cuando lo necesites.",
+    "Por acá de {company_name}, te escribo por lo del {vehiculo}.",
+]
+
+_SPIN_STATEMENT_ASSIGNED = [
+    "Te asignaron con nosotros para el tema del {vehiculo}. Aquí estamos para ayudarte.",
+    "Quedaste registrado con nosotros para el {vehiculo}. Por aquí cuando quieras.",
+    "Vi que tienes una consulta sobre el {vehiculo} con nosotros.",
+    "Por acá de {company_name} para atenderte con lo del {vehiculo}.",
+    "Nos asignaron para darte seguimiento con el {vehiculo}.",
+]
+
+_SPIN_STATEMENT_APPOINTMENT = [
+    "Qué bueno que pudiste venir a ver el {vehiculo}. Por aquí si tienes alguna duda.",
+    "Espero que la visita para el {vehiculo} haya sido de utilidad.",
+    "Pasé a saludarte después de tu visita para ver el {vehiculo}.",
+    "Me da gusto que hayas podido venir a conocer el {vehiculo}.",
+    "Quedamos a tus órdenes después de tu cita para el {vehiculo}.",
+]
+
+_SPIN_STATEMENT_SERVICE = [
+    "Solo paso a saludar y ver cómo está todo con el {vehiculo}.",
+    "Espero que todo vaya bien con tu {vehiculo}. Por aquí si necesitas algo.",
+    "Quedamos a tus órdenes con cualquier cosa del {vehiculo}.",
+    "Pasé a saludar y ver cómo te ha ido con el {vehiculo}.",
+    "Por acá de {company_name}, aquí para lo que necesites con el {vehiculo}.",
+]
+
+# ──────────────────────────────────────────────────────────
+# ESTILO C — Casual corto (25%)
+# Mensaje compacto de una línea, sin estructura de ventas visible.
+# ──────────────────────────────────────────────────────────
+
+_SPIN_CASUAL_LOST = [
+    "Hola {nombre}! {bot_name} de {company_name} por aquí. ¿Cómo vas con lo del {vehiculo}?",
+    "Qué tal {nombre}, {bot_name} de {company_name}. ¿Sigues buscando {vehiculo}?",
+    "Hola {nombre} 👋 {bot_name}, {company_name}. Vi que preguntaste por el {vehiculo}.",
+    "Hola {nombre}! ¿Cómo estás? {bot_name} de {company_name} por aquí.",
+    "{nombre}! Por acá {bot_name} de {company_name}. ¿Todo bien?",
+]
+
+_SPIN_CASUAL_ASSIGNED = [
+    "Hola {nombre}! {bot_name} de {company_name}. ¿Te pudieron ayudar con lo del {vehiculo}?",
+    "Qué tal {nombre}, ¿cómo quedaste con lo del {vehiculo}? {bot_name}, {company_name}.",
+    "Hola {nombre} 👋 {bot_name} de {company_name}. ¿Quedaste bien atendido?",
+    "Hola {nombre}! ¿Cómo te fue con lo del {vehiculo}? {bot_name}, {company_name}.",
+    "{nombre}! {bot_name} de {company_name}. ¿Te dieron respuesta sobre el {vehiculo}?",
+]
+
+_SPIN_CASUAL_APPOINTMENT = [
+    "Hola {nombre}! {bot_name} de {company_name}. ¿Qué tal te fue con el {vehiculo}?",
+    "Qué tal {nombre}, ¿cómo te pareció el {vehiculo}? {bot_name}, {company_name}.",
+    "Hola {nombre} 👋 ¿Te convenció el {vehiculo}? {bot_name}, {company_name}.",
+    "Hola {nombre}! ¿Qué impresión te llevaste del {vehiculo}? {bot_name}.",
+    "{nombre}! {bot_name} de {company_name}. ¿Qué tal el {vehiculo}?",
+]
+
+_SPIN_CASUAL_SERVICE = [
+    "Hola {nombre}! {bot_name} de {company_name}. ¿Cómo va todo con el {vehiculo}?",
+    "Qué tal {nombre}, ¿cómo está tu {vehiculo}? {bot_name}, {company_name}.",
+    "Hola {nombre} 👋 {bot_name} de {company_name}. ¿Todo bien con el {vehiculo}?",
+    "Hola {nombre}! ¿Cómo te han atendido? {bot_name}, {company_name}.",
+    "{nombre}! {bot_name} de {company_name}. ¿Cómo va la experiencia con el {vehiculo}?",
 ]
 
 
@@ -208,16 +288,18 @@ class SenderService:
         self.evo_key = os.getenv("EVOLUTION_API_KEY", "")
         self.evo_instance = os.getenv("EVO_INSTANCE", "Seguimiento")
 
-        # Rate limiting — conservador para evitar ban de WhatsApp
-        self.delay_min = int(os.getenv("SEND_DELAY_MIN", "20"))
-        self.delay_max = int(os.getenv("SEND_DELAY_MAX", "60"))
-        self.max_per_hour = int(os.getenv("MAX_SENDS_PER_HOUR", "25"))
-        self.max_per_day = int(os.getenv("MAX_SENDS_PER_DAY", "120"))
+        # Rate limiting — ~18 mensajes/hora para alcanzar 900-1100 conversaciones/semana
+        # (L-V 10h × 18/h = 180/día × 5 = 900 | Sáb 5h × 18/h = 90 | Total ≈ 990/sem)
+        self.delay_min = int(os.getenv("SEND_DELAY_MIN", "180"))    # 3 min mínimo
+        self.delay_max = int(os.getenv("SEND_DELAY_MAX", "240"))    # 4 min máximo
+        self.max_per_hour = int(os.getenv("MAX_SENDS_PER_HOUR", "20"))
+        self.max_per_day = int(os.getenv("MAX_SENDS_PER_DAY", "200"))
 
-        # Batch settings — send N messages, then rest
+        # Batch settings — pausa breve cada N mensajes
+        # Con delays de 3-4 min ya no necesitamos pausas largas; 1.5-3 min es suficiente
         self.batch_size = int(os.getenv("BATCH_SIZE", "10"))
-        self.batch_pause_min = int(os.getenv("BATCH_PAUSE_MIN", "180"))   # 3 min
-        self.batch_pause_max = int(os.getenv("BATCH_PAUSE_MAX", "360"))   # 6 min
+        self.batch_pause_min = int(os.getenv("BATCH_PAUSE_MIN", "90"))    # 1.5 min
+        self.batch_pause_max = int(os.getenv("BATCH_PAUSE_MAX", "180"))   # 3 min
 
         # Default template (can be overridden per contact in Monday)
         self.default_template = os.getenv(
@@ -291,11 +373,16 @@ class SenderService:
 
     # ──────────────────────────────────────────────────────────
     # MESSAGE SPINNING — nunca dos mensajes iguales
+    # 3 estilos por tipo de campaña, elegidos con pesos:
+    #   A) question  35% — pregunta directa (comportamiento anterior)
+    #   B) statement 40% — enunciado abierto, sin pregunta
+    #   C) casual    25% — mensaje corto de una línea
     # ──────────────────────────────────────────────────────────
     def _spin_message(self, campaign_type: str, contact: Dict) -> str:
         """
-        Genera un mensaje con variación aleatoria según el tipo de campaña.
-        Combina greeting + intro + cuerpo de forma que ningún par sea idéntico.
+        Genera un mensaje con variación aleatoria de estilo y contenido.
+        Mezcla 3 estructuras distintas para que los filtros de Meta no detecten
+        un patrón semántico uniforme (todos los mensajes terminando en pregunta).
         """
         raw_name = contact.get("name", "").split("|")[0].strip() or "cliente"
         vehicle = contact.get("vehicle", "").strip() or "tu unidad de interés"
@@ -307,28 +394,39 @@ class SenderService:
             "company_url": self.company_url,
         }
 
-        if campaign_type == "lost_lead":
-            greeting = _spin(_SPIN_GREETINGS, **ctx)
-            intro = _spin(_SPIN_INTRO_LOST, **ctx)
-            body = _spin(_SPIN_FOLLOW_LOST, **ctx)
-            return f"{greeting}, {intro}\n{body}"
+        # Elegir estilo con pesos: 35% pregunta, 40% statement, 25% casual
+        style = random.choices(
+            ["question", "statement", "casual"],
+            weights=[35, 40, 25]
+        )[0]
 
-        if campaign_type == "assigned_lead":
-            greeting = _spin(_SPIN_GREETINGS, **ctx)
-            intro = _spin(_SPIN_INTRO_LOST, **ctx)
-            body = _spin(_SPIN_FOLLOW_ASSIGNED, **ctx)
-            return f"{greeting}, {intro}\n{body}"
+        # Mapas de variantes por tipo de campaña y estilo
+        _question = {
+            "lost_lead":            _SPIN_FOLLOW_LOST,
+            "assigned_lead":        _SPIN_FOLLOW_ASSIGNED,
+            "attended_appointment": _SPIN_FOLLOW_APPOINTMENT,
+            "customer_service":     _SPIN_FOLLOW_SERVICE,
+        }
+        _statement = {
+            "lost_lead":            _SPIN_STATEMENT_LOST,
+            "assigned_lead":        _SPIN_STATEMENT_ASSIGNED,
+            "attended_appointment": _SPIN_STATEMENT_APPOINTMENT,
+            "customer_service":     _SPIN_STATEMENT_SERVICE,
+        }
+        _casual = {
+            "lost_lead":            _SPIN_CASUAL_LOST,
+            "assigned_lead":        _SPIN_CASUAL_ASSIGNED,
+            "attended_appointment": _SPIN_CASUAL_APPOINTMENT,
+            "customer_service":     _SPIN_CASUAL_SERVICE,
+        }
 
-        if campaign_type == "attended_appointment":
+        if campaign_type in _question:
+            if style == "casual":
+                return _spin(_casual[campaign_type], **ctx)
             greeting = _spin(_SPIN_GREETINGS, **ctx)
             intro = _spin(_SPIN_INTRO_LOST, **ctx)
-            body = _spin(_SPIN_FOLLOW_APPOINTMENT, **ctx)
-            return f"{greeting}, {intro}\n{body}"
-
-        if campaign_type == "customer_service":
-            greeting = _spin(_SPIN_GREETINGS, **ctx)
-            intro = _spin(_SPIN_INTRO_LOST, **ctx)
-            body = _spin(_SPIN_FOLLOW_SERVICE, **ctx)
+            body_pool = _statement[campaign_type] if style == "statement" else _question[campaign_type]
+            body = _spin(body_pool, **ctx)
             return f"{greeting}, {intro}\n{body}"
 
         # Fallback: default template
