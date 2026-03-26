@@ -594,6 +594,9 @@ INTEREST_PHRASES = {
     # Visit / availability (CRITICAL — client wants to go see the vehicle)
     "quiero verlo", "puedo ir", "dónde están", "donde estan",
     "tienen disponible", "aún lo tienen", "aun lo tienen",
+    "tienes disponible", "hay disponible", "disponibles tienes",
+    "qué unidad", "que unidad", "qué unidades", "que unidades",
+    "qué tienen", "que tienen", "qué tienes", "que tienes",
     "quiero ir a verlo", "puedo visitarlos", "horarios",
     "pendiente de ir", "quiero ir", "se puede hoy",
     "puedo ir hoy", "voy para alla", "voy para allá",
@@ -785,6 +788,17 @@ async def handle_reply(
     # 2. Determine action hints + location detection
     action = "continue"
     detected_location = detect_location(user_text)
+    _has_interest = detect_interest(user_text)
+    _has_handoff = detect_handoff(user_text)
+
+    logger.debug(
+        "🔎 Detection for '%s': interest=%s handoff=%s location=%s pending_location=%s",
+        user_text[:60],
+        _has_interest,
+        _has_handoff,
+        detected_location,
+        pending_location,
+    )
 
     if pending_location:
         # We were waiting for a location response
@@ -793,16 +807,18 @@ async def handle_reply(
         else:
             # No location detected — AI will re-ask naturally
             action = "pending_location"
-    elif detect_handoff(user_text):
+    elif _has_handoff:
         if detected_location:
             action = "handoff"  # Direct handoff — location in same message
         else:
             action = "pending_location"  # Need to ask for location first
-    elif detect_interest(user_text):
+    elif _has_interest:
         if detected_location:
             action = "handoff"  # Interest + location → go straight to handoff
         else:
             action = "pending_location"  # Interest detected, ask for location
+
+    logger.debug("📊 Pre-LLM action: %s (campaign=%s)", action, campaign_type)
 
     # 3. Build system prompt with campaign-specific template
     _, time_str = get_mexico_time()
@@ -905,6 +921,10 @@ async def handle_reply(
         "asesor especializado", "gerente de ventas",
         "que te contacte", "que se comunique contigo",
         "le pido a un asesor",
+        # Common LLM-generated handoff phrases
+        "te conecto con", "te transfiero", "conectarte con",
+        "te pongo en contacto", "con un asesor", "con nuestro asesor",
+        "te va a atender", "te atenderá", "un asesor para",
     ]
     if any(w in reply_lower for w in handoff_hints):
         if action == "continue":
@@ -967,7 +987,16 @@ async def handle_reply(
             )
             action = "pending_location"
 
-    # 7. Generate brief summary
+    # 7. Log final action after all post-processing
+    _matched_hints = [w for w in handoff_hints if w in reply_lower]
+    if _matched_hints:
+        logger.debug("🔗 Handoff hints found in LLM reply: %s", _matched_hints)
+    logger.info(
+        "📋 Final action: %s | interest=%s handoff=%s location=%s pending=%s",
+        action, _has_interest, _has_handoff, detected_location, pending_location,
+    )
+
+    # 8. Generate brief summary
     summary = _summarize_exchange(user_text, reply, action)
 
     result = {
