@@ -791,7 +791,7 @@ async def handle_reply(
     _has_interest = detect_interest(user_text)
     _has_handoff = detect_handoff(user_text)
 
-    logger.debug(
+    logger.info(
         "🔎 Detection for '%s': interest=%s handoff=%s location=%s pending_location=%s",
         user_text[:60],
         _has_interest,
@@ -818,7 +818,7 @@ async def handle_reply(
         else:
             action = "pending_location"  # Interest detected, ask for location
 
-    logger.debug("📊 Pre-LLM action: %s (campaign=%s)", action, campaign_type)
+    logger.info("📊 Pre-LLM action: %s (campaign=%s)", action, campaign_type)
 
     # 3. Build system prompt with campaign-specific template
     _, time_str = get_mexico_time()
@@ -990,7 +990,7 @@ async def handle_reply(
     # 7. Log final action after all post-processing
     _matched_hints = [w for w in handoff_hints if w in reply_lower]
     if _matched_hints:
-        logger.debug("🔗 Handoff hints found in LLM reply: %s", _matched_hints)
+        logger.info("🔗 Handoff hints found in LLM reply: %s", _matched_hints)
     logger.info(
         "📋 Final action: %s | interest=%s handoff=%s location=%s pending=%s",
         action, _has_interest, _has_handoff, detected_location, pending_location,
