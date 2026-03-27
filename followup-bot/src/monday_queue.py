@@ -239,6 +239,39 @@ class MondayQueue:
             "queue_running": self._running,
         }
 
+    async def get_funnel_stats(self) -> Dict:
+        """Get contact count grouped by status from the local cache."""
+        cursor = await self._conn.execute(
+            "SELECT status, COUNT(*) FROM contact_cache GROUP BY status ORDER BY COUNT(*) DESC"
+        )
+        rows = await cursor.fetchall()
+        return {(row[0] or "Sin estado"): row[1] for row in rows}
+
+    async def get_pending_contacts(self, limit: int = 20) -> List[Dict]:
+        """Get pending contacts from the cache for queue visualization."""
+        cursor = await self._conn.execute(
+            """SELECT phone, name, vehicle, status, group_title
+               FROM contact_cache
+               WHERE status IN ('Pendiente', 'En Cola')
+               ORDER BY cached_at ASC
+               LIMIT ?""",
+            (limit,)
+        )
+        rows = await cursor.fetchall()
+        result = []
+        for i, row in enumerate(rows):
+            phone = row[0] or ""
+            masked = phone[:4] + "***" + phone[-4:] if len(phone) > 8 else phone
+            result.append({
+                "position": i + 1,
+                "phone": masked,
+                "name": row[1] or "Contacto",
+                "vehicle": row[2] or "",
+                "status": row[3] or "Pendiente",
+                "campaign": row[4] or "",
+            })
+        return result
+
     # ──────────────────────────────────────────────────────────
     # CONTACT CACHE: Local copy of Monday contacts
     # ──────────────────────────────────────────────────────────
