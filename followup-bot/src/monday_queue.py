@@ -37,7 +37,7 @@ class MondayQueue:
         self._process_task: Optional[asyncio.Task] = None
 
         # Config
-        self.process_interval = int(os.getenv("MONDAY_QUEUE_INTERVAL_SECONDS", "10"))
+        self.process_interval = int(os.getenv("MONDAY_QUEUE_INTERVAL_SECONDS", "5"))
         self.max_retries = int(os.getenv("MONDAY_QUEUE_MAX_RETRIES", "10"))
         self.batch_size = int(os.getenv("MONDAY_QUEUE_BATCH_SIZE", "20"))
 

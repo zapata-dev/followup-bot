@@ -857,6 +857,18 @@ async def handle_reply(
             "Si ya lo felicitaste antes, cierra amablemente.\n"
         )
 
+    if action == "pending_location" and _has_interest and not pending_location:
+        context_hint += (
+            "\n⚠️ CONTEXTO CRITICO: El cliente YA mostro interes concreto en su mensaje "
+            "(pidio catalogo, requisitos, precios, informacion, o similar). "
+            "NO le preguntes 'sigues interesado?' — YA lo esta, eso esta confirmado. "
+            "PRIMERO reconoce su solicitud especifica con 1 oracion muy breve "
+            "(ej: 'Claro que si, con gusto!' o 'Con gusto te ayudo con eso!'). "
+            "LUEGO pregunta en que sucursal le gustaria ser atendido por un asesor "
+            "para darte todos los detalles. "
+            "NO intentes dar el catalogo, precios ni requisitos tu misma — eso lo hace el asesor.\n"
+        )
+
     vehicle = contact_data.get("vehicle", "").strip()
     notes = contact_data.get("notes", "").strip()
     resumen = contact_data.get("resumen", "").strip()
