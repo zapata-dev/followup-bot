@@ -958,6 +958,127 @@ async def admin_dashboard():
     return DASHBOARD_HTML
 
 
+# ============================================================
+# MONITORING HELPERS
+# ============================================================
+def _calculate_health_score(sender_status: dict, queue_stats: dict, send_log_today: dict) -> int:
+    score = 100
+    if sender_status.get("whatsapp_disconnected"):
+        score -= 50
+    dlq = (queue_stats or {}).get("dlq_count", 0)
+    score -= min(dlq * 10, 30)
+    pending_outbox = (queue_stats or {}).get("outbox_pending", 0)
+    if pending_outbox > 100:
+        score -= 15
+    elif pending_outbox > 50:
+        score -= 5
+    total = send_log_today.get("total", 0)
+    if total > 0:
+        error_rate = send_log_today.get("error", 0) / total
+        if error_rate > 0.2:
+            score -= 20
+        elif error_rate > 0.1:
+            score -= 10
+    max_hour = sender_status.get("max_per_hour", 1) or 1
+    hour_pct = sender_status.get("sends_this_hour", 0) / max_hour
+    if hour_pct > 0.95:
+        score -= 15
+    elif hour_pct > 0.85:
+        score -= 5
+    return max(0, min(100, score))
+
+
+def _generate_alerts(sender_status: dict, queue_stats: dict, send_log_today: dict) -> list:
+    alerts = []
+    if sender_status.get("whatsapp_disconnected"):
+        alerts.append({"level": "critical", "msg": "WhatsApp desconectado — envíos suspendidos"})
+    dlq = (queue_stats or {}).get("dlq_count", 0)
+    if dlq > 0:
+        alerts.append({"level": "error", "msg": f"{dlq} operación(es) en DLQ — Monday API fallando"})
+    pending_outbox = (queue_stats or {}).get("outbox_pending", 0)
+    if pending_outbox > 100:
+        alerts.append({"level": "warning", "msg": f"Backlog inusual: {pending_outbox} actualizaciones pendientes en outbox"})
+    max_hour = sender_status.get("max_per_hour", 1) or 1
+    sends_hour = sender_status.get("sends_this_hour", 0)
+    if sends_hour / max_hour > 0.9:
+        alerts.append({"level": "warning", "msg": f"Límite por hora casi alcanzado: {sends_hour}/{max_hour} ({int(sends_hour/max_hour*100)}%)"})
+    total = send_log_today.get("total", 0)
+    if total > 0 and send_log_today.get("error", 0) / total > 0.15:
+        pct = int(send_log_today["error"] / total * 100)
+        alerts.append({"level": "warning", "msg": f"Tasa de error elevada hoy: {pct}% de los envíos fallaron"})
+    active = sender_status.get("active_campaigns", {})
+    queued_camps = sender_status.get("queued_campaigns", [])
+    if active:
+        names = list(active.keys())[:2]
+        alerts.append({"level": "ok", "msg": f"Campaña activa: {', '.join(names)}"})
+    if queued_camps:
+        alerts.append({"level": "info", "msg": f"{len(queued_camps)} campaña(s) en cola esperando su turno"})
+    interrupted = sender_status.get("interrupted_campaigns", [])
+    if interrupted:
+        alerts.append({"level": "info", "msg": f"{len(interrupted)} campaña(s) interrumpidas — se reanudarán en horario hábil"})
+    if not sender_status.get("is_office_hours"):
+        schedule = sender_status.get("schedule_today", "N/A")
+        alerts.append({"level": "info", "msg": f"Fuera de ventana de envío · Horario: {schedule}"})
+    if not alerts:
+        alerts.append({"level": "ok", "msg": "Todos los sistemas operando con normalidad"})
+    return alerts
+
+
+@app.get("/admin/monitor")
+async def monitoring_data():
+    """Aggregated monitoring data for the tower-control dashboard."""
+    sender_status = sender.get_status()
+
+    queue_stats: dict = {}
+    funnel: dict = {}
+    pending_contacts: list = []
+    if state.monday_queue:
+        try:
+            queue_stats = await state.monday_queue.get_queue_stats()
+            funnel = await state.monday_queue.get_funnel_stats()
+            pending_contacts = await state.monday_queue.get_pending_contacts(limit=20)
+        except Exception as e:
+            logger.error(f"Monitor queue error: {e}")
+
+    send_log_today: dict = {"total": 0, "sent": 0, "error": 0, "by_status": {}}
+    recent_sends: list = []
+    if state.memory:
+        try:
+            send_log_today = await state.memory.get_send_log_today()
+            recent_sends = await state.memory.get_recent_sends(limit=20)
+        except Exception as e:
+            logger.error(f"Monitor send_log error: {e}")
+
+    # ETA: based on pending contacts × avg delay
+    pending_count = funnel.get("Pendiente", 0) + funnel.get("En Cola", 0)
+    avg_delay_sec = (sender.delay_min + sender.delay_max) / 2
+    eta_minutes = (pending_count * avg_delay_sec) / 60 if pending_count > 0 else 0
+    h, m = int(eta_minutes // 60), int(eta_minutes % 60)
+    eta_formatted = f"{h}h {m}m" if h > 0 else (f"{m}m" if m > 0 else "—")
+
+    health_score = _calculate_health_score(sender_status, queue_stats, send_log_today)
+    alerts = _generate_alerts(sender_status, queue_stats, send_log_today)
+
+    return {
+        "sender": sender_status,
+        "queue": queue_stats,
+        "funnel": funnel,
+        "send_log_today": send_log_today,
+        "recent_sends": recent_sends,
+        "pending_contacts": pending_contacts,
+        "eta": {
+            "pending_contacts": pending_count,
+            "avg_delay_seconds": avg_delay_sec,
+            "eta_minutes": round(eta_minutes),
+            "eta_formatted": eta_formatted,
+        },
+        "health_score": health_score,
+        "alerts": alerts,
+        "uptime_seconds": round(state.uptime_seconds),
+        "timestamp": get_mexico_now().strftime("%H:%M:%S"),
+    }
+
+
 @app.get("/admin/groups")
 async def list_groups():
     """List all campaign groups from Monday board."""

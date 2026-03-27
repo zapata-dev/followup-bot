@@ -190,6 +190,77 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .tb-inject-alert { padding: 10px 14px; border-radius: 8px; font-size: 12px; background: #1e1b4b; color: #a78bfa; border: 1px solid #7c3aed; margin-bottom: 12px; display: none; }
 .tb-inject-alert.visible { display: block; }
 
+/* ── Monitor Tab ── */
+.mn-kpi-bar { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 20px; }
+@media (max-width: 900px) { .mn-kpi-bar { grid-template-columns: repeat(3, 1fr); } }
+.mn-kpi { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 16px; text-align: center; }
+.mn-kpi-icon { font-size: 18px; margin-bottom: 4px; }
+.mn-kpi-val { font-size: 26px; font-weight: 700; color: #f8fafc; line-height: 1.1; }
+.mn-kpi-val.cyan { color: #22d3ee; }
+.mn-kpi-val.green { color: #22c55e; }
+.mn-kpi-val.red { color: #ef4444; }
+.mn-kpi-val.yellow { color: #eab308; }
+.mn-kpi-val.purple { color: #a78bfa; }
+.mn-kpi-label { font-size: 10px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; margin-top: 5px; }
+.mn-body { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; }
+@media (max-width: 900px) { .mn-body { grid-template-columns: 1fr; } }
+.mn-panel { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 18px; }
+.mn-panel-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.mn-panel-title::before { content: ''; display: block; width: 3px; height: 13px; background: #22d3ee; border-radius: 2px; flex-shrink: 0; }
+.mn-active-banner { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: #05260e; border: 1px solid #22c55e44; border-radius: 8px; margin-bottom: 12px; }
+.mn-active-pulse { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; animation: mn-pulse 2s infinite; flex-shrink: 0; }
+@keyframes mn-pulse { 0%,100% { box-shadow: 0 0 0 0 #22c55e88; } 70% { box-shadow: 0 0 0 7px transparent; } }
+.mn-active-text { font-size: 13px; color: #86efac; }
+.mn-idle-banner { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; margin-bottom: 12px; color: #64748b; font-size: 13px; }
+.mn-queue-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #1e293b; }
+.mn-queue-item:last-child { border-bottom: none; }
+.mn-qi-pos { width: 22px; font-size: 11px; color: #475569; text-align: center; font-weight: 600; flex-shrink: 0; }
+.mn-qi-name { flex: 1; font-size: 13px; color: #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mn-qi-camp { font-size: 11px; color: #64748b; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mn-qi-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9px; text-transform: uppercase; letter-spacing: 0.3px; flex-shrink: 0; }
+.mn-qi-badge.pendiente { background: #422006; color: #eab308; }
+.mn-qi-badge.en-cola { background: #0c1a3d; color: #60a5fa; }
+.mn-send-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #1e293b; font-size: 12px; }
+.mn-send-item:last-child { border-bottom: none; }
+.mn-send-phone { flex: 1; color: #94a3b8; font-family: monospace; }
+.mn-send-camp { flex: 1; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mn-send-time { color: #475569; flex-shrink: 0; }
+.mn-send-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.mn-send-dot.sent { background: #22c55e; }
+.mn-send-dot.error { background: #ef4444; }
+.mn-health-wrap { display: flex; justify-content: center; margin-bottom: 12px; }
+.mn-rate-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.mn-rate-label { width: 28px; font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; flex-shrink: 0; }
+.mn-rate-track { flex: 1; height: 8px; background: #0f172a; border-radius: 4px; overflow: hidden; border: 1px solid #1e293b; }
+.mn-rate-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+.mn-rate-fill.green { background: #22c55e; }
+.mn-rate-fill.yellow { background: #eab308; }
+.mn-rate-fill.red { background: #ef4444; }
+.mn-rate-nums { font-size: 12px; color: #94a3b8; width: 64px; text-align: right; flex-shrink: 0; }
+.mn-window-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding: 7px 10px; background: #0f172a; border-radius: 8px; border: 1px solid #1e293b; font-size: 12px; }
+.mn-window-label { color: #64748b; }
+.mn-window-val { font-weight: 600; color: #e2e8f0; }
+.mn-alert { display: flex; align-items: flex-start; gap: 9px; padding: 8px 11px; border-radius: 8px; margin-bottom: 6px; font-size: 13px; line-height: 1.5; }
+.mn-alert:last-child { margin-bottom: 0; }
+.mn-alert-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+.mn-alert.critical { background: #45080844; border-left: 3px solid #ef4444; color: #fca5a5; }
+.mn-alert.critical .mn-alert-dot { background: #ef4444; box-shadow: 0 0 5px #ef4444; }
+.mn-alert.error { background: #43160544; border-left: 3px solid #f97316; color: #fdba74; }
+.mn-alert.error .mn-alert-dot { background: #f97316; }
+.mn-alert.warning { background: #42200644; border-left: 3px solid #eab308; color: #fef08a; }
+.mn-alert.warning .mn-alert-dot { background: #eab308; }
+.mn-alert.info { background: #0c1a3d44; border-left: 3px solid #3b82f6; color: #93c5fd; }
+.mn-alert.info .mn-alert-dot { background: #3b82f6; }
+.mn-alert.ok { background: #05260e44; border-left: 3px solid #22c55e; color: #86efac; }
+.mn-alert.ok .mn-alert-dot { background: #22c55e; }
+.mn-funnel { display: flex; flex-direction: column; gap: 7px; }
+.mn-funnel-row { display: flex; align-items: center; gap: 10px; }
+.mn-funnel-label { width: 88px; font-size: 12px; color: #94a3b8; text-align: right; flex-shrink: 0; }
+.mn-funnel-track { flex: 1; height: 22px; background: #0f172a; border-radius: 4px; overflow: hidden; border: 1px solid #1e293b; }
+.mn-funnel-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font-size: 11px; font-weight: 700; color: rgba(0,0,0,0.7); transition: width 0.6s ease; }
+.mn-funnel-count { width: 38px; font-size: 12px; color: #f8fafc; text-align: right; flex-shrink: 0; font-weight: 600; }
+.mn-updated { text-align: right; font-size: 11px; color: #475569; margin-top: 10px; }
+
 /* Button gen5 */
 .btn-gen5 { background: #f97316; color: #fff; }
 .btn-gen5:hover { background: #ea580c; transform: translateY(-1px); }
@@ -237,6 +308,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <button class="tab-btn active" onclick="switchTab('campaigns')">Campanas</button>
         <button class="tab-btn" onclick="switchTab('builder')">Constructor de Templates</button>
         <button class="tab-btn" onclick="switchTab('csvgen')">Generador CSV</button>
+        <button class="tab-btn" onclick="switchTab('monitor')">Monitor</button>
     </div>
 
     <!-- ═══════════ TAB 1: CAMPAIGNS ═══════════ -->
@@ -580,6 +652,117 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         </div>
     </div>
 
+    <!-- ═══════════ TAB: MONITOR ═══════════ -->
+    <div class="tab-content" id="tab-monitor">
+        <!-- KPI Bar -->
+        <div class="mn-kpi-bar">
+            <div class="mn-kpi">
+                <div class="mn-kpi-icon">🚀</div>
+                <div class="mn-kpi-val cyan" id="mn-sends-hour">--</div>
+                <div class="mn-kpi-label">Envíos esta hora</div>
+            </div>
+            <div class="mn-kpi">
+                <div class="mn-kpi-icon">📬</div>
+                <div class="mn-kpi-val" id="mn-sends-today">--</div>
+                <div class="mn-kpi-label">Enviados hoy</div>
+            </div>
+            <div class="mn-kpi">
+                <div class="mn-kpi-icon">⏳</div>
+                <div class="mn-kpi-val yellow" id="mn-pending">--</div>
+                <div class="mn-kpi-label">En cola</div>
+            </div>
+            <div class="mn-kpi">
+                <div class="mn-kpi-icon">❌</div>
+                <div class="mn-kpi-val red" id="mn-errors">--</div>
+                <div class="mn-kpi-label">Errores hoy</div>
+            </div>
+            <div class="mn-kpi">
+                <div class="mn-kpi-icon">💬</div>
+                <div class="mn-kpi-val green" id="mn-responses">--</div>
+                <div class="mn-kpi-label">Respondieron</div>
+            </div>
+            <div class="mn-kpi">
+                <div class="mn-kpi-icon">⏱️</div>
+                <div class="mn-kpi-val purple" id="mn-eta">--</div>
+                <div class="mn-kpi-label">ETA cola</div>
+            </div>
+        </div>
+
+        <!-- Body: 2 columns -->
+        <div class="mn-body">
+            <!-- Left: Queue + Activity -->
+            <div>
+                <div class="mn-panel">
+                    <div class="mn-panel-title">Cola de Envíos</div>
+                    <div id="mn-active-banner"></div>
+                    <div id="mn-queue-list">
+                        <div style="text-align:center;padding:20px;color:#475569;font-size:13px;">Sin contactos pendientes</div>
+                    </div>
+                </div>
+                <div class="mn-panel" style="margin-top:14px;">
+                    <div class="mn-panel-title">Actividad Reciente</div>
+                    <div id="mn-recent-sends">
+                        <div style="text-align:center;padding:14px;color:#475569;font-size:13px;">Sin actividad registrada</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Health + Alerts -->
+            <div>
+                <div class="mn-panel">
+                    <div class="mn-panel-title">Salud Operativa</div>
+                    <div class="mn-health-wrap">
+                        <div style="position:relative;width:180px;height:108px;">
+                            <svg viewBox="0 0 200 120" width="180" height="108">
+                                <path d="M 20 105 A 80 80 0 0 1 180 105" fill="none" stroke="#0f172a" stroke-width="18" stroke-linecap="round"/>
+                                <path id="mn-gauge-arc" d="M 20 105 A 80 80 0 0 1 180 105" fill="none" stroke="#22c55e" stroke-width="18" stroke-linecap="round" stroke-dasharray="251.2" stroke-dashoffset="251.2" style="transition:stroke-dashoffset 0.8s ease,stroke 0.4s;"/>
+                            </svg>
+                            <div style="position:absolute;top:52%;left:50%;transform:translate(-50%,-50%);text-align:center;">
+                                <div id="mn-health-num" style="font-size:28px;font-weight:800;line-height:1;color:#22c55e;">--</div>
+                                <div id="mn-health-lbl" style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;">Score</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mn-rate-row">
+                        <span class="mn-rate-label">Hora</span>
+                        <div class="mn-rate-track"><div class="mn-rate-fill green" id="mn-rate-hour" style="width:0%"></div></div>
+                        <span class="mn-rate-nums" id="mn-rate-hour-n">--</span>
+                    </div>
+                    <div class="mn-rate-row">
+                        <span class="mn-rate-label">Día</span>
+                        <div class="mn-rate-track"><div class="mn-rate-fill green" id="mn-rate-day" style="width:0%"></div></div>
+                        <span class="mn-rate-nums" id="mn-rate-day-n">--</span>
+                    </div>
+                    <div class="mn-window-row">
+                        <span class="mn-window-label">Ventana hoy</span>
+                        <span class="mn-window-val" id="mn-window-val">--</span>
+                    </div>
+                    <div class="mn-window-row">
+                        <span class="mn-window-label">Delay entre msgs</span>
+                        <span class="mn-window-val" id="mn-delay-val">--</span>
+                    </div>
+                </div>
+
+                <div class="mn-panel" style="margin-top:14px;">
+                    <div class="mn-panel-title">Alertas &amp; Riesgos</div>
+                    <div id="mn-alerts">
+                        <div style="text-align:center;padding:14px;color:#475569;font-size:13px;">Cargando...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Funnel -->
+        <div class="mn-panel" style="margin-top:14px;">
+            <div class="mn-panel-title">Funnel de Conversión</div>
+            <div class="mn-funnel" id="mn-funnel">
+                <div style="text-align:center;padding:14px;color:#475569;font-size:13px;">Cargando funnel...</div>
+            </div>
+        </div>
+
+        <div class="mn-updated">Actualizado: <span id="mn-timestamp">--</span> · auto-refresh cada 10s</div>
+    </div>
+
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
@@ -771,14 +954,18 @@ async function loadAll() {
 // TAB NAVIGATION
 // ══════════════════════════════════════════
 function switchTab(tabName) {
-    // Update buttons
+    // Stop monitor polling when leaving that tab
+    if (tabName !== 'monitor') _stopMonitor();
+
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
-    // Activate selected
-    const tabs = { 'campaigns': 0, 'builder': 1, 'csvgen': 2 };
+    const tabs = { 'campaigns': 0, 'builder': 1, 'csvgen': 2, 'monitor': 3 };
     document.querySelectorAll('.tab-btn')[tabs[tabName]].classList.add('active');
     document.getElementById('tab-' + tabName).classList.add('active');
+
+    // Start monitor polling when entering that tab
+    if (tabName === 'monitor') _startMonitor();
 }
 
 // ══════════════════════════════════════════
@@ -1338,6 +1525,159 @@ function csvReset() {
     document.getElementById('csvResultBox').style.display = 'none';
     document.getElementById('csvErrorBox').style.display = 'none';
     document.getElementById('csvGenerateBtn').disabled = true;
+}
+
+// ══════════════════════════════════════════
+// MONITOR TAB
+// ══════════════════════════════════════════
+let _mnInterval = null;
+
+function _startMonitor() {
+    if (_mnInterval) clearInterval(_mnInterval);
+    loadMonitor();
+    _mnInterval = setInterval(loadMonitor, 10000);
+}
+
+function _stopMonitor() {
+    if (_mnInterval) { clearInterval(_mnInterval); _mnInterval = null; }
+}
+
+function _esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function loadMonitor() {
+    try {
+        const d = await fetch(BASE + '/admin/monitor').then(r => r.json());
+        renderMonitor(d);
+    } catch(e) {
+        document.getElementById('mn-alerts').innerHTML =
+            '<div class="mn-alert critical"><div class="mn-alert-dot"></div><span>Error conectando al servidor</span></div>';
+    }
+}
+
+function renderMonitor(d) {
+    const sender = d.sender || {};
+    const funnel = d.funnel || {};
+    const sendLog = d.send_log_today || {};
+    const eta = d.eta || {};
+
+    // ── KPIs ──
+    document.getElementById('mn-sends-hour').textContent = sender.sends_this_hour != null ? sender.sends_this_hour : '--';
+    document.getElementById('mn-sends-today').textContent = sendLog.sent != null ? sendLog.sent : '--';
+    document.getElementById('mn-pending').textContent = eta.pending_contacts != null ? eta.pending_contacts : '--';
+    document.getElementById('mn-errors').textContent = sendLog.error != null ? sendLog.error : '--';
+    var resp = (funnel['Respondió'] || 0) + (funnel['Interesado'] || 0) + (funnel['Handoff'] || 0);
+    document.getElementById('mn-responses').textContent = resp;
+    document.getElementById('mn-eta').textContent = eta.eta_formatted || '—';
+
+    // ── Active campaign banner ──
+    var activeNames = Object.keys(sender.active_campaigns || {});
+    var queued = sender.queued_campaigns || [];
+    var bannerEl = document.getElementById('mn-active-banner');
+    if (activeNames.length > 0) {
+        bannerEl.innerHTML = '<div class="mn-active-banner"><div class="mn-active-pulse"></div><div class="mn-active-text">Enviando: <strong>' + _esc(activeNames.join(', ')) + '</strong>' + (queued.length > 0 ? ' &nbsp;·&nbsp; En espera: ' + queued.length : '') + '</div></div>';
+    } else if (queued.length > 0) {
+        bannerEl.innerHTML = '<div class="mn-idle-banner">⏸ En cola: ' + _esc(queued.join(', ')) + '</div>';
+    } else {
+        bannerEl.innerHTML = '<div class="mn-idle-banner">⏸ Sin campaña activa</div>';
+    }
+
+    // ── Queue list ──
+    var contacts = d.pending_contacts || [];
+    var queueEl = document.getElementById('mn-queue-list');
+    if (contacts.length === 0) {
+        queueEl.innerHTML = '<div style="text-align:center;padding:18px;color:#475569;font-size:13px;">Sin contactos pendientes en caché local</div>';
+    } else {
+        queueEl.innerHTML = contacts.map(function(c) {
+            var badge = c.status === 'En Cola'
+                ? '<span class="mn-qi-badge en-cola">En Cola</span>'
+                : '<span class="mn-qi-badge pendiente">Pendiente</span>';
+            return '<div class="mn-queue-item">' +
+                '<span class="mn-qi-pos">#' + c.position + '</span>' +
+                '<span class="mn-qi-name">' + _esc((c.name || 'Contacto').substring(0, 24)) + '</span>' +
+                '<span class="mn-qi-camp">' + _esc((c.campaign || '').substring(0, 18)) + '</span>' +
+                badge + '</div>';
+        }).join('');
+    }
+
+    // ── Recent sends ──
+    var sends = d.recent_sends || [];
+    var sendsEl = document.getElementById('mn-recent-sends');
+    if (sends.length === 0) {
+        sendsEl.innerHTML = '<div style="text-align:center;padding:14px;color:#475569;font-size:13px;">Sin actividad registrada hoy</div>';
+    } else {
+        sendsEl.innerHTML = sends.slice(0, 15).map(function(s) {
+            var dot = s.status === 'sent' ? 'sent' : 'error';
+            var time = (s.sent_at || '').substring(11, 16);
+            return '<div class="mn-send-item">' +
+                '<div class="mn-send-dot ' + dot + '"></div>' +
+                '<span class="mn-send-phone">' + _esc(s.phone) + '</span>' +
+                '<span class="mn-send-camp">' + _esc(s.campaign_group || '') + '</span>' +
+                '<span class="mn-send-time">' + time + '</span></div>';
+        }).join('');
+    }
+
+    // ── Health gauge ──
+    var score = d.health_score != null ? d.health_score : 0;
+    var arc = document.getElementById('mn-gauge-arc');
+    var offset = 251.2 * (1 - score / 100);
+    arc.style.strokeDashoffset = offset;
+    var gColor = score >= 80 ? '#22c55e' : score >= 60 ? '#eab308' : '#ef4444';
+    arc.style.stroke = gColor;
+    var numEl = document.getElementById('mn-health-num');
+    numEl.style.color = gColor;
+    numEl.textContent = score;
+    document.getElementById('mn-health-lbl').textContent = score >= 80 ? 'Excelente' : score >= 60 ? 'Advertencia' : 'Crítico';
+
+    // ── Rate bars ──
+    var maxH = sender.max_per_hour || 1;
+    var maxD = sender.max_per_day || 1;
+    var pctH = Math.min(100, (sender.sends_this_hour || 0) / maxH * 100);
+    var pctD = Math.min(100, (sender.sends_today || 0) / maxD * 100);
+    var cH = pctH > 90 ? 'red' : pctH > 70 ? 'yellow' : 'green';
+    var cD = pctD > 90 ? 'red' : pctD > 70 ? 'yellow' : 'green';
+    var rH = document.getElementById('mn-rate-hour');
+    rH.className = 'mn-rate-fill ' + cH; rH.style.width = pctH + '%';
+    var rD = document.getElementById('mn-rate-day');
+    rD.className = 'mn-rate-fill ' + cD; rD.style.width = pctD + '%';
+    document.getElementById('mn-rate-hour-n').textContent = (sender.sends_this_hour || 0) + '/' + maxH;
+    document.getElementById('mn-rate-day-n').textContent = (sender.sends_today || 0) + '/' + maxD;
+    var winEl = document.getElementById('mn-window-val');
+    var sched = sender.schedule_today || '—';
+    winEl.textContent = sched + (sender.is_office_hours ? ' · Abierta' : ' · Cerrada');
+    winEl.style.color = sender.is_office_hours ? '#22c55e' : '#ef4444';
+    document.getElementById('mn-delay-val').textContent = sender.delay_range || '—';
+
+    // ── Alerts ──
+    var alerts = d.alerts || [];
+    document.getElementById('mn-alerts').innerHTML = alerts.map(function(a) {
+        return '<div class="mn-alert ' + a.level + '"><div class="mn-alert-dot"></div><span>' + _esc(a.msg) + '</span></div>';
+    }).join('') || '<div class="mn-alert ok"><div class="mn-alert-dot"></div><span>Sin alertas activas</span></div>';
+
+    // ── Funnel ──
+    var stages = [
+        { key: 'Pendiente',  color: '#64748b' },
+        { key: 'En Cola',    color: '#3b82f6' },
+        { key: 'Enviado',    color: '#22d3ee' },
+        { key: 'Respondió',  color: '#a78bfa' },
+        { key: 'Interesado', color: '#22c55e' },
+        { key: 'Handoff',    color: '#eab308' },
+        { key: 'STOP',       color: '#f97316' },
+        { key: 'Error',      color: '#ef4444' },
+    ];
+    var maxVal = Math.max(1, Math.max.apply(null, stages.map(function(s){ return funnel[s.key] || 0; })));
+    document.getElementById('mn-funnel').innerHTML = stages.map(function(s) {
+        var val = funnel[s.key] || 0;
+        var pct = Math.max(val > 0 ? 2 : 0, val / maxVal * 100);
+        return '<div class="mn-funnel-row">' +
+            '<span class="mn-funnel-label">' + s.key + '</span>' +
+            '<div class="mn-funnel-track"><div class="mn-funnel-fill" style="width:' + pct + '%;background:' + s.color + ';">' + (val > 0 ? val : '') + '</div></div>' +
+            '<span class="mn-funnel-count">' + val + '</span></div>';
+    }).join('');
+
+    // ── Timestamp ──
+    document.getElementById('mn-timestamp').textContent = d.timestamp || '--';
 }
 
 // ── Init ──

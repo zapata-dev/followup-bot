@@ -9,7 +9,7 @@ import os
 import logging
 import time
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +141,44 @@ class MemoryStore:
         VALUES(?, ?, ?, ?, ?)
         """, (phone, campaign_group, status, now, error))
         await self._conn.commit()
+
+    async def get_send_log_today(self) -> Dict:
+        """Get send log counts for today (UTC date prefix match)."""
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        cursor = await self._conn.execute(
+            "SELECT status, COUNT(*) FROM send_log WHERE sent_at >= ? GROUP BY status",
+            (today,)
+        )
+        rows = await cursor.fetchall()
+        counts = {row[0]: row[1] for row in rows}
+        return {
+            "total": sum(counts.values()),
+            "sent": counts.get("sent", 0),
+            "error": counts.get("error", 0),
+            "by_status": counts,
+        }
+
+    async def get_recent_sends(self, limit: int = 25) -> List[Dict]:
+        """Get the most recent send log entries."""
+        cursor = await self._conn.execute(
+            "SELECT id, phone, campaign_group, status, sent_at, error "
+            "FROM send_log ORDER BY id DESC LIMIT ?",
+            (limit,)
+        )
+        rows = await cursor.fetchall()
+        result = []
+        for row in rows:
+            phone = row[1] or ""
+            masked = phone[:4] + "***" + phone[-4:] if len(phone) > 8 else phone
+            result.append({
+                "id": row[0],
+                "phone": masked,
+                "campaign_group": row[2] or "",
+                "status": row[3],
+                "sent_at": row[4],
+                "error": row[5],
+            })
+        return result
 
     async def close(self):
         if self._conn:
