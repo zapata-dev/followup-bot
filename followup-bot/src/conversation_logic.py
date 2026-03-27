@@ -828,20 +828,38 @@ async def handle_reply(
     # Detect if the first outbound message included the bot's name
     first_msg_included_name = False
     first_msg_was_long = False
+    bot_already_introduced = False
+    bot_first_name = BOT_NAME.lower().split()[0]  # e.g. "estefania"
     if conversation_history:
         first_msg = conversation_history[0].get("content", "")
-        first_msg_included_name = BOT_NAME.lower().split()[0] in first_msg.lower()
+        first_msg_included_name = bot_first_name in first_msg.lower()
         first_msg_was_long = len(first_msg) > 200
+
+        # Check if the bot already introduced itself in any previous assistant reply
+        for msg in conversation_history[1:]:
+            if msg.get("role") == "assistant" and bot_first_name in msg.get("content", "").lower():
+                bot_already_introduced = True
+                break
 
     # Build context hint for the AI
     presentation_hint = ""
-    if not first_msg_included_name:
+    if bot_already_introduced:
+        # Bot already introduced itself — forbid any re-introduction or greeting
+        presentation_hint = (
+            "\n🚫 PROHIBIDO ABSOLUTO: Ya te presentaste antes en esta conversacion. "
+            "NUNCA repitas tu nombre, NUNCA digas 'Hola', NUNCA saludes de nuevo. "
+            "Ve DIRECTO al punto como si fuera un mensaje mas de la conversacion. "
+            "El cliente ya sabe quien eres.\n"
+        )
+    elif not first_msg_included_name:
+        # First time replying and template didn't include the name — introduce once
         presentation_hint = (
             "\n⚠️ IMPORTANTE: El primer mensaje NO incluyo tu nombre. "
-            "Presentate naturalmente al inicio de tu respuesta "
+            "Presentate naturalmente UNA SOLA VEZ al inicio de tu respuesta "
             "(ej: 'Soy {bot_name}, ...'). Fusionalo con tu respuesta.\n"
         ).format(bot_name=BOT_NAME)
-    if first_msg_was_long:
+
+    if first_msg_was_long and not bot_already_introduced:
         presentation_hint += (
             "\n⚠️ El primer mensaje fue MUY LARGO. Compensa siendo ultra-directa "
             "y breve. Maximo 1 oracion.\n"
