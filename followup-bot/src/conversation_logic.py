@@ -166,7 +166,11 @@ REGLAS DE COMUNICACION (CRITICAS — sigue TODAS sin excepcion):
    luego ofrece accion concreta. NO des disculpas genericas.
    Si la queja es seria (mal vendedor, estafa, mal trato), SIEMPRE transfiere
    al gerente/asesor. NUNCA intentes resolver tu sola una queja grave.
-9. Adapta tu tono al del cliente. Si escribe corto, responde corto. Espejea su estilo.
+9. TONO CONSISTENTE — USA SIEMPRE "TU" (CRITICO):
+   SIEMPRE tutea al cliente: "tienes", "quieres", "puedes", "te interesa", "tu ruta".
+   NUNCA uses "usted", "le", "su", "les" aunque el template inicial lo haya usado.
+   Si el cliente te habla de "usted", tu igual sigues con "tu". Es tu estilo, no el suyo.
+   Adapta tu tono al del cliente en LONGITUD y ENERGIA, no en formalidad.
    Usa "calor" latino: se cercana, directa, de confianza. El trato en la industria
    de camiones es de negocios pero con mucha camaraderia.
 10. Habla como mexicana real, no como comunicado corporativo:
@@ -613,6 +617,21 @@ INTEREST_PHRASES = {
 }
 
 
+AFFIRMATION_PHRASES = {
+    "si", "sí", "si porfa", "sí porfa", "si porfavor", "sí porfavor",
+    "si por favor", "sí por favor", "ajá", "aja", "ok", "okey", "dale",
+    "claro", "claro que si", "claro que sí", "va", "sale", "andale",
+    "ándale", "bueno", "perfecto", "de acuerdo", "por supuesto", "obvio",
+    "con gusto", "adelante", "listo", "ya", "simón", "simon",
+}
+
+
+def detect_affirmation(text: str) -> bool:
+    """Detect if user is giving a short affirmative reply (yes, ok, sure, etc.)."""
+    t = re.sub(r'[¿?¡!.,;:]', '', text.lower().strip())
+    return t in AFFIRMATION_PHRASES
+
+
 def detect_interest(text: str) -> bool:
     """Detect if user shows buying interest."""
     t = text.lower().strip()
@@ -790,12 +809,14 @@ async def handle_reply(
     detected_location = detect_location(user_text)
     _has_interest = detect_interest(user_text)
     _has_handoff = detect_handoff(user_text)
+    _is_affirmation = detect_affirmation(user_text)
 
     logger.info(
-        "🔎 Detection for '%s': interest=%s handoff=%s location=%s pending_location=%s",
+        "🔎 Detection for '%s': interest=%s handoff=%s affirmation=%s location=%s pending_location=%s",
         user_text[:60],
         _has_interest,
         _has_handoff,
+        _is_affirmation,
         detected_location,
         pending_location,
     )
@@ -805,14 +826,14 @@ async def handle_reply(
         if detected_location:
             action = "handoff"
         else:
-            # No location detected — AI will re-ask naturally
+            # No location yet — keep pending (affirmations also stay here, LLM will re-ask)
             action = "pending_location"
     elif _has_handoff:
         if detected_location:
             action = "handoff"  # Direct handoff — location in same message
         else:
             action = "pending_location"  # Need to ask for location first
-    elif _has_interest:
+    elif _has_interest or _is_affirmation:
         if detected_location:
             action = "handoff"  # Interest + location → go straight to handoff
         else:
@@ -875,16 +896,28 @@ async def handle_reply(
             "Si ya lo felicitaste antes, cierra amablemente.\n"
         )
 
-    if action == "pending_location" and _has_interest and not pending_location:
+    if action == "pending_location" and not pending_location:
+        # First time entering pending_location — fresh interest signal
         context_hint += (
-            "\n⚠️ CONTEXTO CRITICO: El cliente YA mostro interes concreto en su mensaje "
-            "(pidio catalogo, requisitos, precios, informacion, o similar). "
-            "NO le preguntes 'sigues interesado?' — YA lo esta, eso esta confirmado. "
-            "PRIMERO reconoce su solicitud especifica con 1 oracion muy breve "
-            "(ej: 'Claro que si, con gusto!' o 'Con gusto te ayudo con eso!'). "
-            "LUEGO pregunta en que sucursal le gustaria ser atendido por un asesor "
-            "para darte todos los detalles. "
-            "NO intentes dar el catalogo, precios ni requisitos tu misma — eso lo hace el asesor.\n"
+            "\n⚠️ CONTEXTO CRITICO: El cliente YA mostro interes concreto. "
+            "NO le preguntes 'sigues interesado?' — YA lo esta. "
+            "PRIMERO reconoce su solicitud con 1 oracion ultra-breve "
+            "(ej: 'Claro que si, con gusto!'). "
+            "LUEGO pregunta en que sucursal quiere que lo atienda un asesor. "
+            "Lista las opciones: Tlalnepantla, Texcoco, Cuautitlan, Queretaro, "
+            "Celaya, Leon, Guadalajara (Occidente o Mariano Otero), Tampico, Monterrey. "
+            "NO des precios, catalogo ni requisitos tu misma.\n"
+        )
+    elif action == "pending_location" and pending_location:
+        # Already asked for location, client replied without giving one — re-ask
+        context_hint += (
+            "\n⚠️ CONTEXTO CRITICO: Ya le preguntaste la sucursal y NO te la dio. "
+            "Su respuesta puede ser una afirmacion ('si', 'aja', 'ok', 'dale', 'claro') "
+            "o algo generico. En ese caso NO asumas que ya tienes la sucursal. "
+            "UNICAMENTE di algo como 'Perfecto! Y en que ciudad o sucursal te gustaria "
+            "que te atendieran?' SIN mencionar al asesor todavia — eso viene despues. "
+            "Opciones: Tlalnepantla, Texcoco, Cuautitlan, Queretaro, Celaya, Leon, "
+            "Guadalajara (Occidente o Mariano Otero), Tampico, Monterrey.\n"
         )
 
     vehicle = contact_data.get("vehicle", "").strip()
