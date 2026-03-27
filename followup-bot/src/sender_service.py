@@ -318,6 +318,9 @@ class SenderService:
         self._active_campaigns: Dict[str, bool] = {}  # group_id → is_running
         self._paused_campaigns: set = set()
 
+        # Speed factor — runtime throttle (1.0=normal, 0.5=2x faster, 2.0=2x slower)
+        self._speed_factor: float = 1.0
+
         # Flag global: WhatsApp desconectado → abortar todo
         self._whatsapp_disconnected: bool = False
 
@@ -740,7 +743,9 @@ class SenderService:
                         # aunque haya múltiples campañas activas.
                         # Log-normal distribution = timing humano (no robótico uniforme).
                         if not result.get("disconnected"):
-                            delay = _human_delay(float(self.delay_min), float(self.delay_max))
+                            eff_min = max(10, int(self.delay_min * self._speed_factor))
+                            eff_max = max(15, int(self.delay_max * self._speed_factor))
+                            delay = _human_delay(float(eff_min), float(eff_max))
                             logger.debug(f"⏳ Waiting {delay:.1f}s (global lock held)...")
                             await asyncio.sleep(delay)
 
@@ -900,6 +905,18 @@ class SenderService:
                 bot_sent_ids=self._auto_resume_deps.get("bot_sent_ids"),
             )
 
+    def set_speed_factor(self, factor: float) -> Dict:
+        """Adjust send speed at runtime.
+        0.5 = 2x faster (half the wait), 1.0 = normal, 2.0 = 2x slower.
+        Clamped to [0.25, 4.0] to prevent accidental bans or infinite waits.
+        """
+        factor = max(0.25, min(4.0, float(factor)))
+        self._speed_factor = factor
+        eff_min = max(10, int(self.delay_min * factor))
+        eff_max = max(15, int(self.delay_max * factor))
+        logger.info(f"🎚️ Speed factor → {factor}x — effective delay: {eff_min}-{eff_max}s")
+        return {"speed_factor": factor, "effective_delay_min": eff_min, "effective_delay_max": eff_max}
+
     def get_status(self) -> Dict:
         now = get_mexico_now()
         schedule = get_today_schedule(now)
@@ -920,6 +937,8 @@ class SenderService:
             "is_office_hours": is_office_hours(now),
             "current_time_mx": now.strftime("%H:%M"),
             "delay_range": f"{self.delay_min}-{self.delay_max}s",
+            "speed_factor": self._speed_factor,
+            "effective_delay_range": f"{max(10, int(self.delay_min * self._speed_factor))}-{max(15, int(self.delay_max * self._speed_factor))}s",
             "batch_size": self.batch_size,
             "batch_pause": f"{self.batch_pause_min}-{self.batch_pause_max}s",
             "circuit_breaker_limit": self.max_consecutive_errors,
