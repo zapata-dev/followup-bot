@@ -682,11 +682,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                 <div class="mn-kpi-label">Respondieron</div>
             </div>
             <div class="mn-kpi">
-                <div class="mn-kpi-icon">⏱️</div>
-                <div class="mn-kpi-val purple" id="mn-eta">--</div>
-                <div class="mn-kpi-label">ETA cola</div>
+                <div class="mn-kpi-icon">⚡</div>
+                <div class="mn-kpi-val purple" id="mn-velocity">--</div>
+                <div class="mn-kpi-label">msg/min actual</div>
             </div>
         </div>
+
+        <!-- Window Prediction Banner -->
+        <div id="mn-prediction-banner" style="display:none;margin-bottom:14px;"></div>
 
         <!-- Body: 2 columns -->
         <div class="mn-body">
@@ -738,8 +741,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                         <span class="mn-window-val" id="mn-window-val">--</span>
                     </div>
                     <div class="mn-window-row">
-                        <span class="mn-window-label">Delay entre msgs</span>
+                        <span class="mn-window-label">Delay efectivo</span>
                         <span class="mn-window-val" id="mn-delay-val">--</span>
+                    </div>
+                    <!-- Speed controls -->
+                    <div style="margin-top:12px;">
+                        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:8px;">Control de velocidad</div>
+                        <div style="display:flex;gap:6px;">
+                            <button class="btn" id="mn-speed-slow" onclick="mnSetSpeed(2.0)" style="flex:1;padding:7px 0;font-size:12px;background:#0f172a;color:#64748b;border:1px solid #334155;">🐢 Lento</button>
+                            <button class="btn" id="mn-speed-normal" onclick="mnSetSpeed(1.0)" style="flex:1;padding:7px 0;font-size:12px;background:#22d3ee22;color:#22d3ee;border:1px solid #22d3ee;">⚖️ Normal</button>
+                            <button class="btn" id="mn-speed-fast" onclick="mnSetSpeed(0.5)" style="flex:1;padding:7px 0;font-size:12px;background:#0f172a;color:#64748b;border:1px solid #334155;">🚀 Rápido</button>
+                        </div>
+                        <div id="mn-speed-status" style="font-size:11px;color:#64748b;text-align:center;margin-top:6px;"></div>
                     </div>
                 </div>
 
@@ -754,13 +767,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
         <!-- Funnel -->
         <div class="mn-panel" style="margin-top:14px;">
-            <div class="mn-panel-title">Funnel de Conversión</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <div class="mn-panel-title" style="margin-bottom:0;">Funnel de Conversión</div>
+                <div id="mn-funnel-rates" style="font-size:12px;color:#64748b;display:flex;gap:16px;"></div>
+            </div>
             <div class="mn-funnel" id="mn-funnel">
                 <div style="text-align:center;padding:14px;color:#475569;font-size:13px;">Cargando funnel...</div>
             </div>
         </div>
 
-        <div class="mn-updated">Actualizado: <span id="mn-timestamp">--</span> · auto-refresh cada 10s</div>
+        <div class="mn-updated">Actualizado: <span id="mn-timestamp">--</span> · auto-refresh cada 10s · ETA: <span id="mn-eta-footer">--</span></div>
     </div>
 
 </div>
@@ -1557,23 +1573,58 @@ async function loadMonitor() {
 }
 
 function renderMonitor(d) {
-    const sender = d.sender || {};
-    const funnel = d.funnel || {};
-    const sendLog = d.send_log_today || {};
-    const eta = d.eta || {};
+    var sndr = d.sender || {};
+    var funnel = d.funnel || {};
+    var sendLog = d.send_log_today || {};
+    var eta = d.eta || {};
+    var vel = d.velocity || {};
+    var pred = d.prediction || {};
 
     // ── KPIs ──
-    document.getElementById('mn-sends-hour').textContent = sender.sends_this_hour != null ? sender.sends_this_hour : '--';
+    document.getElementById('mn-sends-hour').textContent = sndr.sends_this_hour != null ? sndr.sends_this_hour : '--';
     document.getElementById('mn-sends-today').textContent = sendLog.sent != null ? sendLog.sent : '--';
     document.getElementById('mn-pending').textContent = eta.pending_contacts != null ? eta.pending_contacts : '--';
     document.getElementById('mn-errors').textContent = sendLog.error != null ? sendLog.error : '--';
     var resp = (funnel['Respondió'] || 0) + (funnel['Interesado'] || 0) + (funnel['Handoff'] || 0);
     document.getElementById('mn-responses').textContent = resp;
-    document.getElementById('mn-eta').textContent = eta.eta_formatted || '—';
+    var velVal = vel.msgs_per_min != null ? vel.msgs_per_min.toFixed(2) : '--';
+    document.getElementById('mn-velocity').textContent = velVal;
+
+    // ── Window prediction banner ──
+    var banner = document.getElementById('mn-prediction-banner');
+    if (eta.pending_contacts > 0) {
+        banner.style.display = 'block';
+        if (!pred.will_finish_today) {
+            banner.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#42200688;border:1px solid #eab308;border-radius:10px;">' +
+                '<span style="font-size:20px;">⚠️</span>' +
+                '<div style="flex:1;">' +
+                '<div style="font-size:13px;font-weight:700;color:#fef08a;">No terminas hoy</div>' +
+                '<div style="font-size:12px;color:#fde68a;margin-top:2px;">Finalización estimada: <strong>' + _esc(pred.eta_str || '—') + '</strong> · ' + (pred.days_span || 0) + ' día(s)</div>' +
+                '</div>' +
+                '<div style="font-size:12px;color:#64748b;">' + eta.eta_formatted + ' totales</div>' +
+                '</div>';
+        } else if (pred.risk) {
+            banner.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#0c1a3d88;border:1px solid #3b82f6;border-radius:10px;">' +
+                '<span style="font-size:20px;">ℹ️</span>' +
+                '<div style="flex:1;">' +
+                '<div style="font-size:13px;font-weight:700;color:#93c5fd;">Terminas hoy con margen ajustado</div>' +
+                '<div style="font-size:12px;color:#bfdbfe;margin-top:2px;">ETA: <strong>' + _esc(pred.eta_str || '—') + '</strong></div>' +
+                '</div></div>';
+        } else {
+            banner.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#05260e88;border:1px solid #22c55e;border-radius:10px;">' +
+                '<span style="font-size:20px;">✅</span>' +
+                '<div style="flex:1;">' +
+                '<div style="font-size:13px;font-weight:700;color:#86efac;">Terminas hoy</div>' +
+                '<div style="font-size:12px;color:#bbf7d0;margin-top:2px;">ETA: <strong>' + _esc(pred.eta_str || '—') + '</strong></div>' +
+                '</div></div>';
+        }
+    } else {
+        banner.style.display = 'none';
+    }
 
     // ── Active campaign banner ──
-    var activeNames = Object.keys(sender.active_campaigns || {});
-    var queued = sender.queued_campaigns || [];
+    var activeNames = Object.keys(sndr.active_campaigns || {});
+    var queued = sndr.queued_campaigns || [];
     var bannerEl = document.getElementById('mn-active-banner');
     if (activeNames.length > 0) {
         bannerEl.innerHTML = '<div class="mn-active-banner"><div class="mn-active-pulse"></div><div class="mn-active-text">Enviando: <strong>' + _esc(activeNames.join(', ')) + '</strong>' + (queued.length > 0 ? ' &nbsp;·&nbsp; En espera: ' + queued.length : '') + '</div></div>';
@@ -1583,7 +1634,7 @@ function renderMonitor(d) {
         bannerEl.innerHTML = '<div class="mn-idle-banner">⏸ Sin campaña activa</div>';
     }
 
-    // ── Queue list ──
+    // ── Queue list (with per-contact ETA) ──
     var contacts = d.pending_contacts || [];
     var queueEl = document.getElementById('mn-queue-list');
     if (contacts.length === 0) {
@@ -1593,10 +1644,11 @@ function renderMonitor(d) {
             var badge = c.status === 'En Cola'
                 ? '<span class="mn-qi-badge en-cola">En Cola</span>'
                 : '<span class="mn-qi-badge pendiente">Pendiente</span>';
+            var etaSpan = c.eta ? '<span style="font-size:11px;color:#475569;margin-left:4px;">⏱ ' + _esc(c.eta) + '</span>' : '';
             return '<div class="mn-queue-item">' +
                 '<span class="mn-qi-pos">#' + c.position + '</span>' +
-                '<span class="mn-qi-name">' + _esc((c.name || 'Contacto').substring(0, 24)) + '</span>' +
-                '<span class="mn-qi-camp">' + _esc((c.campaign || '').substring(0, 18)) + '</span>' +
+                '<span class="mn-qi-name">' + _esc((c.name || 'Contacto').substring(0, 22)) + etaSpan + '</span>' +
+                '<span class="mn-qi-camp">' + _esc((c.campaign || '').substring(0, 16)) + '</span>' +
                 badge + '</div>';
         }).join('');
     }
@@ -1621,8 +1673,7 @@ function renderMonitor(d) {
     // ── Health gauge ──
     var score = d.health_score != null ? d.health_score : 0;
     var arc = document.getElementById('mn-gauge-arc');
-    var offset = 251.2 * (1 - score / 100);
-    arc.style.strokeDashoffset = offset;
+    arc.style.strokeDashoffset = 251.2 * (1 - score / 100);
     var gColor = score >= 80 ? '#22c55e' : score >= 60 ? '#eab308' : '#ef4444';
     arc.style.stroke = gColor;
     var numEl = document.getElementById('mn-health-num');
@@ -1631,23 +1682,35 @@ function renderMonitor(d) {
     document.getElementById('mn-health-lbl').textContent = score >= 80 ? 'Excelente' : score >= 60 ? 'Advertencia' : 'Crítico';
 
     // ── Rate bars ──
-    var maxH = sender.max_per_hour || 1;
-    var maxD = sender.max_per_day || 1;
-    var pctH = Math.min(100, (sender.sends_this_hour || 0) / maxH * 100);
-    var pctD = Math.min(100, (sender.sends_today || 0) / maxD * 100);
+    var maxH = sndr.max_per_hour || 1;
+    var maxD = sndr.max_per_day || 1;
+    var pctH = Math.min(100, (sndr.sends_this_hour || 0) / maxH * 100);
+    var pctD = Math.min(100, (sndr.sends_today || 0) / maxD * 100);
     var cH = pctH > 90 ? 'red' : pctH > 70 ? 'yellow' : 'green';
     var cD = pctD > 90 ? 'red' : pctD > 70 ? 'yellow' : 'green';
     var rH = document.getElementById('mn-rate-hour');
     rH.className = 'mn-rate-fill ' + cH; rH.style.width = pctH + '%';
     var rD = document.getElementById('mn-rate-day');
     rD.className = 'mn-rate-fill ' + cD; rD.style.width = pctD + '%';
-    document.getElementById('mn-rate-hour-n').textContent = (sender.sends_this_hour || 0) + '/' + maxH;
-    document.getElementById('mn-rate-day-n').textContent = (sender.sends_today || 0) + '/' + maxD;
+    document.getElementById('mn-rate-hour-n').textContent = (sndr.sends_this_hour || 0) + '/' + maxH;
+    document.getElementById('mn-rate-day-n').textContent = (sndr.sends_today || 0) + '/' + maxD;
     var winEl = document.getElementById('mn-window-val');
-    var sched = sender.schedule_today || '—';
-    winEl.textContent = sched + (sender.is_office_hours ? ' · Abierta' : ' · Cerrada');
-    winEl.style.color = sender.is_office_hours ? '#22c55e' : '#ef4444';
-    document.getElementById('mn-delay-val').textContent = sender.delay_range || '—';
+    winEl.textContent = (sndr.schedule_today || '—') + (sndr.is_office_hours ? ' · Abierta' : ' · Cerrada');
+    winEl.style.color = sndr.is_office_hours ? '#22c55e' : '#ef4444';
+    document.getElementById('mn-delay-val').textContent = sndr.effective_delay_range || sndr.delay_range || '—';
+
+    // ── Speed control buttons ──
+    var sf = sndr.speed_factor || 1.0;
+    ['slow','normal','fast'].forEach(function(s) {
+        var el = document.getElementById('mn-speed-' + s);
+        if (el) { el.style.background = '#0f172a'; el.style.color = '#64748b'; el.style.borderColor = '#334155'; }
+    });
+    var active_btn = sf >= 1.5 ? 'slow' : sf <= 0.6 ? 'fast' : 'normal';
+    var el = document.getElementById('mn-speed-' + active_btn);
+    if (el) { el.style.background = '#22d3ee22'; el.style.color = '#22d3ee'; el.style.borderColor = '#22d3ee'; }
+    var sfLabel = sf === 1.0 ? 'Normal' : (sf < 1 ? sf + 'x más rápido' : sf + 'x más lento');
+    var statusEl = document.getElementById('mn-speed-status');
+    if (statusEl) statusEl.textContent = 'Factor actual: ' + sfLabel;
 
     // ── Alerts ──
     var alerts = d.alerts || [];
@@ -1655,7 +1718,7 @@ function renderMonitor(d) {
         return '<div class="mn-alert ' + a.level + '"><div class="mn-alert-dot"></div><span>' + _esc(a.msg) + '</span></div>';
     }).join('') || '<div class="mn-alert ok"><div class="mn-alert-dot"></div><span>Sin alertas activas</span></div>';
 
-    // ── Funnel ──
+    // ── Funnel con % conversión ──
     var stages = [
         { key: 'Pendiente',  color: '#64748b' },
         { key: 'En Cola',    color: '#3b82f6' },
@@ -1676,8 +1739,32 @@ function renderMonitor(d) {
             '<span class="mn-funnel-count">' + val + '</span></div>';
     }).join('');
 
+    // Conversion rates panel
+    var enviado = funnel['Enviado'] || 0;
+    var respondio = funnel['Respondió'] || 0;
+    var interesado = (funnel['Interesado'] || 0) + (funnel['Handoff'] || 0);
+    var rates = '';
+    if (enviado > 0) rates += '<span>Apertura: <strong style="color:#a78bfa;">' + Math.round(respondio/enviado*100) + '%</strong></span>';
+    if (respondio > 0) rates += '<span style="margin-left:14px;">Conversión: <strong style="color:#22c55e;">' + Math.round(interesado/respondio*100) + '%</strong></span>';
+    var ratesEl = document.getElementById('mn-funnel-rates');
+    if (ratesEl) ratesEl.innerHTML = rates;
+
+    // Footer ETA
+    var footerEta = document.getElementById('mn-eta-footer');
+    if (footerEta) footerEta.textContent = pred.eta_str || eta.eta_formatted || '—';
+
     // ── Timestamp ──
     document.getElementById('mn-timestamp').textContent = d.timestamp || '--';
+}
+
+async function mnSetSpeed(factor) {
+    try {
+        var r = await fetch(BASE + '/admin/sender/speed?factor=' + factor, {method: 'POST'}).then(r => r.json());
+        toast('Velocidad ajustada: ' + r.speed_factor + 'x · Delay: ' + r.effective_delay_min + '-' + r.effective_delay_max + 's', 'success');
+        loadMonitor();
+    } catch(e) {
+        toast('Error ajustando velocidad', 'error');
+    }
 }
 
 // ── Init ──

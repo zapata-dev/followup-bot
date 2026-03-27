@@ -961,6 +961,57 @@ async def admin_dashboard():
 # ============================================================
 # MONITORING HELPERS
 # ============================================================
+def _predict_window(pending_contacts: int, avg_delay_sec: float, now) -> dict:
+    """Calculate whether queue will finish today or how many days it will span."""
+    from datetime import timedelta
+    if pending_contacts == 0:
+        return {"will_finish_today": True, "eta_str": "Cola vacía", "days_span": 0,
+                "finish_date": "", "finish_time": "", "risk": False}
+    if avg_delay_sec <= 0:
+        avg_delay_sec = (sender.delay_min + sender.delay_max) / 2
+
+    total_sec = pending_contacts * avg_delay_sec
+
+    def day_window(dow):
+        if dow == 6: return None
+        return (9 * 3600, 14 * 3600 if dow == 5 else 19 * 3600)
+
+    day_names = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
+    remaining = total_sec
+    dow = now.weekday()
+    win = day_window(dow)
+    cur_sec = now.hour * 3600 + now.minute * 60 + now.second
+
+    if win and win[0] <= cur_sec < win[1]:
+        avail = win[1] - cur_sec
+        if avail >= remaining:
+            fin = cur_sec + remaining
+            fh, fm = int(fin // 3600), int((fin % 3600) // 60)
+            return {"will_finish_today": True, "eta_str": f"Hoy {fh:02d}:{fm:02d}",
+                    "days_span": 0, "finish_date": "Hoy", "finish_time": f"{fh:02d}:{fm:02d}",
+                    "risk": (avail / max(remaining, 1)) < 1.15}
+        remaining -= avail
+
+    check = now.date()
+    for d in range(1, 15):
+        check = check + timedelta(days=1)
+        win = day_window(check.weekday())
+        if not win:
+            continue
+        avail = win[1] - win[0]
+        if avail >= remaining:
+            fin = win[0] + remaining
+            fh, fm = int(fin // 3600), int((fin % 3600) // 60)
+            label = day_names[check.weekday()] + " " + check.strftime("%d/%m")
+            return {"will_finish_today": False, "eta_str": f"{label} {fh:02d}:{fm:02d}",
+                    "days_span": d, "finish_date": label, "finish_time": f"{fh:02d}:{fm:02d}",
+                    "risk": True}
+        remaining -= avail
+
+    return {"will_finish_today": False, "eta_str": "+14 días", "days_span": 14,
+            "finish_date": "+14d", "finish_time": "", "risk": True}
+
+
 def _calculate_health_score(sender_status: dict, queue_stats: dict, send_log_today: dict) -> int:
     score = 100
     if sender_status.get("whatsapp_disconnected"):
@@ -988,37 +1039,60 @@ def _calculate_health_score(sender_status: dict, queue_stats: dict, send_log_tod
     return max(0, min(100, score))
 
 
-def _generate_alerts(sender_status: dict, queue_stats: dict, send_log_today: dict) -> list:
+def _generate_alerts(sender_status: dict, queue_stats: dict, send_log_today: dict,
+                     velocity: dict = None, prediction: dict = None) -> list:
     alerts = []
+    # ── Critical ──
     if sender_status.get("whatsapp_disconnected"):
         alerts.append({"level": "critical", "msg": "WhatsApp desconectado — envíos suspendidos"})
+    # ── Errors ──
     dlq = (queue_stats or {}).get("dlq_count", 0)
     if dlq > 0:
         alerts.append({"level": "error", "msg": f"{dlq} operación(es) en DLQ — Monday API fallando"})
+    # ── Velocity alerts ──
+    if velocity and sender_status.get("is_office_hours"):
+        expected_min = 60 / max(sender_status.get("max_per_hour", 20), 1)  # expected interval in seconds
+        actual_interval = velocity.get("avg_interval_sec", 0)
+        if velocity.get("sends_last_10min", 0) == 0 and list(sender_status.get("active_campaigns", {}).keys()):
+            alerts.append({"level": "warning", "msg": "Campaña activa pero sin envíos en los últimos 10 min — posible bloqueo"})
+        elif actual_interval > 0 and actual_interval > expected_min * 60 * 1.5:
+            alerts.append({"level": "warning", "msg": f"Velocidad debajo de lo esperado: {velocity['msgs_per_min']:.1f} msg/min (esperado ≥{60/max(actual_interval,1):.1f})"})
+    # ── Window prediction ──
+    if prediction:
+        if not prediction.get("will_finish_today") and prediction.get("days_span", 0) > 0:
+            alerts.append({"level": "warning",
+                           "msg": f"No terminas hoy — finalizarás: {prediction['eta_str']} (en {prediction['days_span']} día(s))"})
+        elif prediction.get("risk") and prediction.get("will_finish_today"):
+            alerts.append({"level": "info", "msg": f"Terminas hoy con margen ajustado — ETA: {prediction['eta_str']}"})
+    # ── Rate limits ──
     pending_outbox = (queue_stats or {}).get("outbox_pending", 0)
     if pending_outbox > 100:
-        alerts.append({"level": "warning", "msg": f"Backlog inusual: {pending_outbox} actualizaciones pendientes en outbox"})
+        alerts.append({"level": "warning", "msg": f"Backlog Monday: {pending_outbox} actualizaciones pendientes"})
     max_hour = sender_status.get("max_per_hour", 1) or 1
     sends_hour = sender_status.get("sends_this_hour", 0)
     if sends_hour / max_hour > 0.9:
-        alerts.append({"level": "warning", "msg": f"Límite por hora casi alcanzado: {sends_hour}/{max_hour} ({int(sends_hour/max_hour*100)}%)"})
+        alerts.append({"level": "warning", "msg": f"Límite/hora casi alcanzado: {sends_hour}/{max_hour} ({int(sends_hour/max_hour*100)}%)"})
     total = send_log_today.get("total", 0)
     if total > 0 and send_log_today.get("error", 0) / total > 0.15:
         pct = int(send_log_today["error"] / total * 100)
-        alerts.append({"level": "warning", "msg": f"Tasa de error elevada hoy: {pct}% de los envíos fallaron"})
+        alerts.append({"level": "warning", "msg": f"Tasa de error elevada: {pct}% de los envíos fallaron hoy"})
+    # ── Info / Status ──
+    speed_factor = sender_status.get("speed_factor", 1.0)
+    if speed_factor != 1.0:
+        label = f"{speed_factor}x {'más rápido' if speed_factor < 1 else 'más lento'}"
+        alerts.append({"level": "info", "msg": f"Velocidad ajustada manualmente: {label}"})
     active = sender_status.get("active_campaigns", {})
     queued_camps = sender_status.get("queued_campaigns", [])
     if active:
         names = list(active.keys())[:2]
         alerts.append({"level": "ok", "msg": f"Campaña activa: {', '.join(names)}"})
     if queued_camps:
-        alerts.append({"level": "info", "msg": f"{len(queued_camps)} campaña(s) en cola esperando su turno"})
+        alerts.append({"level": "info", "msg": f"{len(queued_camps)} campaña(s) en cola"})
     interrupted = sender_status.get("interrupted_campaigns", [])
     if interrupted:
-        alerts.append({"level": "info", "msg": f"{len(interrupted)} campaña(s) interrumpidas — se reanudarán en horario hábil"})
+        alerts.append({"level": "info", "msg": f"{len(interrupted)} campaña(s) interrumpidas — reanudan en horario hábil"})
     if not sender_status.get("is_office_hours"):
-        schedule = sender_status.get("schedule_today", "N/A")
-        alerts.append({"level": "info", "msg": f"Fuera de ventana de envío · Horario: {schedule}"})
+        alerts.append({"level": "info", "msg": f"Fuera de ventana · Horario: {sender_status.get('schedule_today', 'N/A')}"})
     if not alerts:
         alerts.append({"level": "ok", "msg": "Todos los sistemas operando con normalidad"})
     return alerts
@@ -1028,6 +1102,7 @@ def _generate_alerts(sender_status: dict, queue_stats: dict, send_log_today: dic
 async def monitoring_data():
     """Aggregated monitoring data for the tower-control dashboard."""
     sender_status = sender.get_status()
+    now_mx = get_mexico_now()
 
     queue_stats: dict = {}
     funnel: dict = {}
@@ -1042,22 +1117,37 @@ async def monitoring_data():
 
     send_log_today: dict = {"total": 0, "sent": 0, "error": 0, "by_status": {}}
     recent_sends: list = []
+    velocity: dict = {"sends_last_10min": 0, "msgs_per_min": 0.0, "avg_interval_sec": 0}
     if state.memory:
         try:
             send_log_today = await state.memory.get_send_log_today()
             recent_sends = await state.memory.get_recent_sends(limit=20)
+            velocity = await state.memory.get_velocity_stats()
         except Exception as e:
             logger.error(f"Monitor send_log error: {e}")
 
-    # ETA: based on pending contacts × avg delay
+    # Use real velocity if available, else fall back to configured delays
     pending_count = funnel.get("Pendiente", 0) + funnel.get("En Cola", 0)
-    avg_delay_sec = (sender.delay_min + sender.delay_max) / 2
+    config_avg = (sender.delay_min + sender.delay_max) / 2 * sender._speed_factor
+    avg_delay_sec = velocity["avg_interval_sec"] if velocity["avg_interval_sec"] > 0 else config_avg
+
     eta_minutes = (pending_count * avg_delay_sec) / 60 if pending_count > 0 else 0
     h, m = int(eta_minutes // 60), int(eta_minutes % 60)
     eta_formatted = f"{h}h {m}m" if h > 0 else (f"{m}m" if m > 0 else "—")
 
+    # Per-contact ETA (position-based, seconds → "Xm Ys" label)
+    for c in pending_contacts:
+        pos_sec = (c["position"] - 1) * avg_delay_sec
+        if pos_sec < 60:
+            c["eta"] = "< 1m"
+        elif pos_sec < 3600:
+            c["eta"] = f"{int(pos_sec // 60)}m"
+        else:
+            c["eta"] = f"{int(pos_sec // 3600)}h {int((pos_sec % 3600) // 60)}m"
+
+    prediction = _predict_window(pending_count, avg_delay_sec, now_mx)
     health_score = _calculate_health_score(sender_status, queue_stats, send_log_today)
-    alerts = _generate_alerts(sender_status, queue_stats, send_log_today)
+    alerts = _generate_alerts(sender_status, queue_stats, send_log_today, velocity, prediction)
 
     return {
         "sender": sender_status,
@@ -1066,17 +1156,33 @@ async def monitoring_data():
         "send_log_today": send_log_today,
         "recent_sends": recent_sends,
         "pending_contacts": pending_contacts,
+        "velocity": velocity,
+        "prediction": prediction,
         "eta": {
             "pending_contacts": pending_count,
-            "avg_delay_seconds": avg_delay_sec,
+            "avg_delay_seconds": round(avg_delay_sec),
             "eta_minutes": round(eta_minutes),
             "eta_formatted": eta_formatted,
         },
         "health_score": health_score,
         "alerts": alerts,
         "uptime_seconds": round(state.uptime_seconds),
-        "timestamp": get_mexico_now().strftime("%H:%M:%S"),
+        "timestamp": now_mx.strftime("%H:%M:%S"),
     }
+
+
+@app.post("/admin/sender/speed")
+async def set_sender_speed(factor: float = 1.0):
+    """
+    Adjust send speed at runtime.
+    factor=0.5 → 2x faster (half the wait).
+    factor=1.0 → normal speed.
+    factor=2.0 → 2x slower (double the wait).
+    Clamped to [0.25, 4.0].
+    """
+    result = sender.set_speed_factor(factor)
+    logger.info(f"🎚️ Speed factor set to {result['speed_factor']}x via admin API")
+    return result
 
 
 @app.get("/admin/groups")

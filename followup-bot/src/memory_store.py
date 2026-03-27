@@ -142,6 +142,30 @@ class MemoryStore:
         """, (phone, campaign_group, status, now, error))
         await self._conn.commit()
 
+    async def get_velocity_stats(self) -> Dict:
+        """Calculate actual send velocity from recent send_log entries."""
+        from datetime import timedelta
+        ten_min_ago = (datetime.utcnow() - timedelta(minutes=10)).isoformat()
+        five_min_ago = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
+        cursor = await self._conn.execute(
+            "SELECT COUNT(*) FROM send_log WHERE sent_at >= ? AND status = 'sent'",
+            (ten_min_ago,)
+        )
+        sends_10min = (await cursor.fetchone())[0]
+        cursor2 = await self._conn.execute(
+            "SELECT COUNT(*) FROM send_log WHERE sent_at >= ? AND status = 'sent'",
+            (five_min_ago,)
+        )
+        sends_5min = (await cursor2.fetchone())[0]
+        msgs_per_min = round(sends_10min / 10, 2)
+        avg_interval_sec = round(600 / sends_10min) if sends_10min > 0 else 0
+        return {
+            "sends_last_10min": sends_10min,
+            "sends_last_5min": sends_5min,
+            "msgs_per_min": msgs_per_min,
+            "avg_interval_sec": avg_interval_sec,
+        }
+
     async def get_send_log_today(self) -> Dict:
         """Get send log counts for today (UTC date prefix match)."""
         today = datetime.utcnow().strftime("%Y-%m-%d")
