@@ -35,6 +35,7 @@ class MondayQueue:
         self._conn: Optional[aiosqlite.Connection] = None
         self._running = False
         self._process_task: Optional[asyncio.Task] = None
+        self._flush_event = asyncio.Event()  # signals processor to wake up immediately
 
         # Config
         self.process_interval = int(os.getenv("MONDAY_QUEUE_INTERVAL_SECONDS", "5"))
@@ -120,6 +121,7 @@ class MondayQueue:
         ))
         await self._conn.commit()
         logger.info(f"📥 Queued: {operation} for item {item_id}")
+        self._flush_event.set()  # wake up processor immediately
 
     async def get_pending(self, limit: int = 20) -> List[Dict]:
         """Get pending items from outbox, oldest first."""
@@ -456,7 +458,12 @@ class MondayQueue:
             except Exception as e:
                 logger.error(f"❌ Queue processor error: {e}")
 
-            await asyncio.sleep(self.process_interval)
+            # Wait for next flush trigger OR timeout (whichever comes first)
+            try:
+                await asyncio.wait_for(self._flush_event.wait(), timeout=self.process_interval)
+            except asyncio.TimeoutError:
+                pass
+            self._flush_event.clear()
 
     async def _execute_operation(self, monday, operation: str, payload: dict) -> bool:
         """Execute a single Monday operation. Returns True on success."""
