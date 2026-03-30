@@ -687,9 +687,11 @@ BRANCH_LOCATIONS = {
     "monterrey": "Monterrey",
 }
 
-# Short aliases for common abbreviations
+# Short aliases for common abbreviations and typos
 BRANCH_ALIASES = {
     "tlalne": "Tlalnepantla",
+    "tlanepantla": "Tlalnepantla",   # common typo (missing first 'l')
+    "talnepantla": "Tlalnepantla",   # common typo
     "texco": "Texcoco",
     "cuauti": "Cuautitlán",
     "qro": "Querétaro",
