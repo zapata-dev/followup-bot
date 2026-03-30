@@ -694,6 +694,8 @@ BRANCH_ALIASES = {
     "talnepantla": "Tlalnepantla",   # common typo
     "texco": "Texcoco",
     "cuauti": "Cuautitlán",
+    "cuatitlan": "Cuautitlán",       # common typo (missing 'u')
+    "cuatitlán": "Cuautitlán",       # common typo (missing 'u', with accent)
     "qro": "Querétaro",
     "quere": "Querétaro",
     "mty": "Monterrey",
