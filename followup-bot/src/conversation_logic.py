@@ -307,10 +307,12 @@ CUANDO EL CLIENTE MUESTRA INTENCION DE COMPRA/VISITA — FLUJO DE SUCURSAL:
   cerrar compra, pide hablar con alguien, que lo llamen, o dice cualquier cosa
   POSITIVA hacia la compra:
   1. PRIMERO pregunta en cual sucursal quiere ser atendido.
-  2. Listale las opciones de forma natural:
-     "Tenemos puntos de venta en Tlalnepantla, Texcoco, Cuautitlan, Queretaro,
-     Celaya, Leon, en Guadalajara (Occidente y Mariano Otero), Tampico y Monterrey.
-     Dime cual te queda mas comoda y con gusto vemos el tema contigo."
+  2. Listale las opciones de forma natural. IMPORTANTE: menciona que en CUALQUIER
+     sucursal manejamos el mismo inventario completo, que elija la que le quede
+     mas comoda. Ejemplo:
+     "Manejamos el mismo inventario en todas nuestras sucursales: Tlalnepantla,
+     Texcoco, Cuautitlan, Queretaro, Celaya, Leon, Guadalajara (Occidente y
+     Mariano Otero), Tampico y Monterrey. ¿Cual te queda mejor?"
   3. Si el cliente dice solo "Guadalajara" sin especificar, pregunta:
      "En Guadalajara tenemos Occidente y Mariano Otero, cual te queda mejor?"
   4. Una vez que el cliente CONFIRMA la sucursal, ENTONCES haz el handoff:
@@ -910,8 +912,9 @@ async def handle_reply(
             "PRIMERO reconoce su solicitud con 1 oracion ultra-breve "
             "(ej: 'Claro que si, con gusto!'). "
             "LUEGO pregunta en que sucursal quiere que lo atienda un asesor. "
-            "Lista las opciones: Tlalnepantla, Texcoco, Cuautitlan, Queretaro, "
-            "Celaya, Leon, Guadalajara (Occidente o Mariano Otero), Tampico, Monterrey. "
+            "Menciona que manejamos el mismo inventario completo en todas las sucursales "
+            "y que elija la que le quede mas comoda: Tlalnepantla, Texcoco, Cuautitlan, "
+            "Queretaro, Celaya, Leon, Guadalajara (Occidente o Mariano Otero), Tampico, Monterrey. "
             "NO des precios, catalogo ni requisitos tu misma.\n"
         )
     elif action == "pending_location" and pending_location:
@@ -920,8 +923,9 @@ async def handle_reply(
             "\n⚠️ CONTEXTO CRITICO: Ya le preguntaste la sucursal y NO te la dio. "
             "Su respuesta puede ser una afirmacion ('si', 'aja', 'ok', 'dale', 'claro') "
             "o algo generico. En ese caso NO asumas que ya tienes la sucursal. "
-            "UNICAMENTE di algo como 'Perfecto! Y en que ciudad o sucursal te gustaria "
-            "que te atendieran?' SIN mencionar al asesor todavia — eso viene despues. "
+            "UNICAMENTE di algo como 'Perfecto! Y en que sucursal te gustaria que te "
+            "atendieran? En cualquiera manejamos el inventario completo.' "
+            "SIN mencionar al asesor todavia. "
             "Opciones: Tlalnepantla, Texcoco, Cuautitlan, Queretaro, Celaya, Leon, "
             "Guadalajara (Occidente o Mariano Otero), Tampico, Monterrey.\n"
         )
@@ -1065,7 +1069,30 @@ async def handle_reply(
             )
             action = "pending_location"
 
-    # 6d. CRITICAL: If action is pending_location but LLM "completed" the handoff
+    # 6d. Strip unsolicited business hours from reply.
+    # The system prompt says NEVER mention hours unless the user explicitly asked.
+    # If the LLM includes them anyway, remove the offending sentence(s).
+    _asked_hours = any(
+        w in user_text.lower()
+        for w in ["horario", "hora", "atienden", "abren", "cierran", "disponible", "cuando"]
+    )
+    if not _asked_hours:
+        _hours_patterns = [
+            r'[Nn]uestro horario[^.!?]*[.!?]',
+            r'[Hh]orario de atenci[oó]n[^.!?]*[.!?]',
+            r'\b9[:\s]?[a]?m\b[^.!?]*[.!?]',
+            r'[Tt]e atendemos a primera hora[.!?]?',
+            r'[Aa]tendemos de[^.!?]*[.!?]',
+        ]
+        _cleaned = reply
+        for pat in _hours_patterns:
+            _cleaned = re.sub(pat, '', _cleaned).strip()
+        if _cleaned != reply:
+            reply = _cleaned
+            reply_lower = reply.lower()
+            logger.info("🔧 Stripped unsolicited business hours from reply")
+
+    # 6e. CRITICAL: If action is pending_location but LLM "completed" the handoff
     # without asking for location (said "te conecto con un asesor" with no location
     # question), the user will think the handoff is done and stop responding.
     # Detect and fix: replace the reply with an explicit location question.
