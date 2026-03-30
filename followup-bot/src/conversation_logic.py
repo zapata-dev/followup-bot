@@ -1126,20 +1126,24 @@ async def handle_reply(
             client_name = contact_data.get("name", "").split("|")[0].strip()
             name_part = f" {client_name}" if client_name else ""
             if pending_location:
+                # Already asked for location once and client confirmed without giving it.
+                # LLM is trying to complete the handoff — go ahead and do a blind handoff
+                # so the owner gets notified immediately (location is unknown).
+                action = "handoff"
                 reply = (
-                    f"¡Perfecto{name_part}! ¿En cuál de nuestras sucursales te gustaría "
-                    f"que te atendiera un asesor? Tenemos en Tlalnepantla, Texcoco, "
-                    f"Cuautitlan, Queretaro, Celaya, Leon, Guadalajara "
-                    f"(Occidente o Mariano Otero), Tampico y Monterrey."
+                    f"Perfecto{name_part}, en breve te contactará un asesor "
+                    f"para darte todos los detalles."
                 )
+                logger.info("🔧 Blind handoff triggered — client confirmed twice without location")
             else:
+                # First time — ask for location before completing handoff
                 reply = (
                     f"¡Con gusto{name_part}! Solo dime en cuál sucursal te gustaría "
                     f"que te atendiera un asesor: Tlalnepantla, Texcoco, Cuautitlan, "
                     f"Queretaro, Celaya, Leon, Guadalajara (Occidente o Mariano Otero), "
                     f"Tampico o Monterrey."
                 )
-            logger.info("🔧 Fixed premature handoff reply — injected location question")
+                logger.info("🔧 Fixed premature handoff reply — injected location question")
 
     # 7. Log final action after all post-processing
     _matched_hints = [w for w in handoff_hints if w in reply_lower]
