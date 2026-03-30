@@ -1065,6 +1065,35 @@ async def handle_reply(
             )
             action = "pending_location"
 
+    # 6d. CRITICAL: If action is pending_location but LLM "completed" the handoff
+    # without asking for location (said "te conecto con un asesor" with no location
+    # question), the user will think the handoff is done and stop responding.
+    # Detect and fix: replace the reply with an explicit location question.
+    if action == "pending_location":
+        _has_location_question = any(
+            w in reply_lower
+            for w in ["sucursal", "ciudad", "en qué", "en que", "cuál sucursal", "cual sucursal"]
+        )
+        _has_premature_handoff = any(w in reply_lower for w in handoff_hints)
+        if _has_premature_handoff and not _has_location_question:
+            client_name = contact_data.get("name", "").split("|")[0].strip()
+            name_part = f" {client_name}" if client_name else ""
+            if pending_location:
+                reply = (
+                    f"¡Perfecto{name_part}! ¿En cuál de nuestras sucursales te gustaría "
+                    f"que te atendiera un asesor? Tenemos en Tlalnepantla, Texcoco, "
+                    f"Cuautitlan, Queretaro, Celaya, Leon, Guadalajara "
+                    f"(Occidente o Mariano Otero), Tampico y Monterrey."
+                )
+            else:
+                reply = (
+                    f"¡Con gusto{name_part}! Solo dime en cuál sucursal te gustaría "
+                    f"que te atendiera un asesor: Tlalnepantla, Texcoco, Cuautitlan, "
+                    f"Queretaro, Celaya, Leon, Guadalajara (Occidente o Mariano Otero), "
+                    f"Tampico o Monterrey."
+                )
+            logger.info("🔧 Fixed premature handoff reply — injected location question")
+
     # 7. Log final action after all post-processing
     _matched_hints = [w for w in handoff_hints if w in reply_lower]
     if _matched_hints:
