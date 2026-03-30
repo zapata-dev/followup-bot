@@ -999,13 +999,16 @@ async def handle_reply(
 
     # 6b. Post-process: if AI response lists branch options, it's asking for location
     # Count how many branch names appear in the reply
-    branch_names_in_reply = sum(
-        1 for loc in ["Tlalnepantla", "Texcoco", "Cuautitlan", "Queretaro",
-                       "Celaya", "Leon", "Guadalajara", "Tampico", "Monterrey"]
-        if loc.lower() in reply_lower
-    )
+    _branch_list = ["Tlalnepantla", "Texcoco", "Cuautitlan", "Queretaro",
+                    "Celaya", "Leon", "Guadalajara", "Tampico", "Monterrey"]
+    branch_names_in_reply = sum(1 for loc in _branch_list if loc.lower() in reply_lower)
     if branch_names_in_reply >= 3 and action != "handoff":
         action = "pending_location"
+    elif branch_names_in_reply == 1 and action == "pending_location" and pending_location:
+        # LLM confirmed exactly one branch (e.g. resolved a nearby city to a branch) → handoff
+        matched_branch = next(loc for loc in _branch_list if loc.lower() in reply_lower)
+        detected_location = BRANCH_LOCATIONS.get(matched_branch.lower(), matched_branch)
+        action = "handoff"
 
     # 6c. CRITICAL: Detect if bot is scheduling/confirming visits (FORBIDDEN)
     # If the bot confirms a time, says "te espero", gives an address, or says
