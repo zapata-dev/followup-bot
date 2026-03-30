@@ -623,6 +623,8 @@ AFFIRMATION_PHRASES = {
     "claro", "claro que si", "claro que sí", "va", "sale", "andale",
     "ándale", "bueno", "perfecto", "de acuerdo", "por supuesto", "obvio",
     "con gusto", "adelante", "listo", "ya", "simón", "simon",
+    "muy bien", "así es", "eso es", "correcto", "exacto", "exactamente",
+    "asi es", "eso mismo", "en efecto", "afirmativo",
 }
 
 
@@ -1004,11 +1006,17 @@ async def handle_reply(
     branch_names_in_reply = sum(1 for loc in _branch_list if loc.lower() in reply_lower)
     if branch_names_in_reply >= 3 and action != "handoff":
         action = "pending_location"
-    elif branch_names_in_reply == 1 and action == "pending_location" and pending_location:
-        # LLM confirmed exactly one branch (e.g. resolved a nearby city to a branch) → handoff
-        matched_branch = next(loc for loc in _branch_list if loc.lower() in reply_lower)
-        detected_location = BRANCH_LOCATIONS.get(matched_branch.lower(), matched_branch)
-        action = "handoff"
+    elif branch_names_in_reply == 1 and action != "handoff":
+        # LLM confirmed exactly one branch — either user said a branch name (detected_location set)
+        # or LLM resolved a nearby city to a branch (pending_location context).
+        if detected_location:
+            # User message contained a branch name and LLM confirmed it → handoff
+            action = "handoff"
+        elif pending_location:
+            # User gave a nearby city; LLM resolved it to a branch → handoff
+            matched_branch = next(loc for loc in _branch_list if loc.lower() in reply_lower)
+            detected_location = BRANCH_LOCATIONS.get(matched_branch.lower(), matched_branch)
+            action = "handoff"
 
     # 6c. CRITICAL: Detect if bot is scheduling/confirming visits (FORBIDDEN)
     # If the bot confirms a time, says "te espero", gives an address, or says
