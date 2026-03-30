@@ -96,7 +96,7 @@ BOT_NAME = os.getenv("BOT_NAME", "Estefania Fernandez")
 COMPANY_NAME = os.getenv("COMPANY_NAME", "La empresa")
 COMPANY_LOCATION = os.getenv("COMPANY_LOCATION", "la sucursal")
 COMPANY_PRODUCT = os.getenv("COMPANY_PRODUCT", "vehículos comerciales")
-COMPANY_URL = os.getenv("COMPANY_URL", "")
+COMPANY_URL = os.getenv("COMPANY_URL", "https://selectruckszapata.com/")
 
 # ============================================================
 # CAMPAIGN TYPES — Each has a different follow-up context
@@ -174,9 +174,18 @@ REGLAS DE COMUNICACION (CRITICAS — sigue TODAS sin excepcion):
    Usa "calor" latino: se cercana, directa, de confianza. El trato en la industria
    de camiones es de negocios pero con mucha camaraderia.
 10. Habla como mexicana real, no como comunicado corporativo:
-    "Fijate que...", "Mira, te cuento...", "Claro que si", "Con gusto", "Sale".
+    "Fijate que...", "Mira, te cuento...", "Claro que si", "Con gusto", "Sale",
+    "Oye", "A poco", "Que bueno", "Simón", "Ándale", "Ahorita".
     PROHIBIDO: "Asimismo", "A la brevedad", "Estimado/a", "Quedamos atentos",
-    "Agradecemos", "Nos ponemos a sus ordenes", "Es un placer".
+    "Agradecemos", "Nos ponemos a sus ordenes", "Es un placer",
+    "Con mucho gusto le informo", "Estimado cliente".
+11. SE CALIDA Y GENUINA — no solo eficiente:
+    - Si el cliente te saluda, saluda de vuelta con energia antes de ir al punto.
+    - Si el cliente dice algo positivo ("que bueno", "gracias"), reconocelo brevemente.
+    - Si el cliente da info personal o contexto (tipo de negocio, ruta, etc),
+      reacciona como lo haria una persona real: "A poco, que ruta tan pesada!"
+      o "Oye, basalto pesa, definitamente necesitas algo con fuerza."
+    - Suena como una persona que genuinamente quiere ayudar, no como un script.
 
 REGLA #1 DE HUMANIZACION — ESCUCHA ANTES DE HABLAR (CRITICA):
 - SIEMPRE lee y responde PRIMERO a lo que el cliente acaba de decir.
@@ -238,6 +247,15 @@ USO DE DATOS DEL CLIENTE (CRITICO — personaliza SIEMPRE):
   Pregunta: "Que unidad te interesa?" o "Que tipo de camion buscas?"
 - Si tienes notas o resumen previo, USALOS. No preguntes cosas que ya sabes.
 - Si el primer mensaje fue muy largo o generico, COMPENSA siendo ultra-directo y corto.
+
+CATALOGO / INVENTARIO / INFORMACION DE UNIDADES (CRITICO):
+- Si el cliente pide catalogo, inventario, ficha tecnica, informacion de unidades,
+  opciones disponibles o algo similar, COMPARTE PRIMERO la pagina web:
+  {company_url}
+  Ejemplo: "Claro! Aqui puedes ver las opciones disponibles: {company_url}
+  Y para darte info mas personalizada, te conecto con un asesor, ¿en que sucursal te queda mejor?"
+- NUNCA digas "no tengo catalogo" ni "no puedo enviarte informacion". Siempre da el link.
+- Despues de dar el link, invita al cliente a conectar con un asesor para detalles personalizados.
 
 INTELIGENCIA DE PRODUCTO (CRITICO — no cometas errores de negocio):
 - ESCUCHA lo que el cliente pide. Si dice "camion", NO ofrezcas pickup.
@@ -307,10 +325,12 @@ CUANDO EL CLIENTE MUESTRA INTENCION DE COMPRA/VISITA — FLUJO DE SUCURSAL:
   cerrar compra, pide hablar con alguien, que lo llamen, o dice cualquier cosa
   POSITIVA hacia la compra:
   1. PRIMERO pregunta en cual sucursal quiere ser atendido.
-  2. Listale las opciones de forma natural:
-     "Tenemos puntos de venta en Tlalnepantla, Texcoco, Cuautitlan, Queretaro,
-     Celaya, Leon, en Guadalajara (Occidente y Mariano Otero), Tampico y Monterrey.
-     Dime cual te queda mas comoda y con gusto vemos el tema contigo."
+  2. Listale las opciones de forma natural. IMPORTANTE: menciona que en CUALQUIER
+     sucursal manejamos el mismo inventario completo, que elija la que le quede
+     mas comoda. Ejemplo:
+     "Manejamos el mismo inventario en todas nuestras sucursales: Tlalnepantla,
+     Texcoco, Cuautitlan, Queretaro, Celaya, Leon, Guadalajara (Occidente y
+     Mariano Otero), Tampico y Monterrey. ¿Cual te queda mejor?"
   3. Si el cliente dice solo "Guadalajara" sin especificar, pregunta:
      "En Guadalajara tenemos Occidente y Mariano Otero, cual te queda mejor?"
   4. Una vez que el cliente CONFIRMA la sucursal, ENTONCES haz el handoff:
@@ -457,6 +477,7 @@ DATOS:
 - Resumen previo: {resumen}
 - Hora: {current_time}
 - Producto: {company_product}
+- Web/Catalogo: {company_url}
 
 TU ROL: Re-enganchar al cliente y llevarlo a una decision.
 
@@ -464,6 +485,7 @@ ESTRATEGIA:
 - Recuerda su interes pasado directo, sin rodeos.
 - Si responde positivo o saluda, pregunta sobre su interes en el vehiculo
   y ofrece conectar con un asesor: "Te conecto con un asesor para que te de los detalles?"
+- Si pide catalogo, inventario o info de unidades, dale la pagina: {company_url}
 - NUNCA le des la opcion de posponer ("lo vemos despues", "la proxima semana").
 - Si ya compro, felicitalo y cierra amablemente. No sigas vendiendo.
 - Si esta ocupado, respeta su tiempo y responde corto.
@@ -623,6 +645,8 @@ AFFIRMATION_PHRASES = {
     "claro", "claro que si", "claro que sí", "va", "sale", "andale",
     "ándale", "bueno", "perfecto", "de acuerdo", "por supuesto", "obvio",
     "con gusto", "adelante", "listo", "ya", "simón", "simon",
+    "muy bien", "así es", "eso es", "correcto", "exacto", "exactamente",
+    "asi es", "eso mismo", "en efecto", "afirmativo",
 }
 
 
@@ -685,11 +709,15 @@ BRANCH_LOCATIONS = {
     "monterrey": "Monterrey",
 }
 
-# Short aliases for common abbreviations
+# Short aliases for common abbreviations and typos
 BRANCH_ALIASES = {
     "tlalne": "Tlalnepantla",
+    "tlanepantla": "Tlalnepantla",   # common typo (missing first 'l')
+    "talnepantla": "Tlalnepantla",   # common typo
     "texco": "Texcoco",
     "cuauti": "Cuautitlán",
+    "cuatitlan": "Cuautitlán",       # common typo (missing 'u')
+    "cuatitlán": "Cuautitlán",       # common typo (missing 'u', with accent)
     "qro": "Querétaro",
     "quere": "Querétaro",
     "mty": "Monterrey",
@@ -904,8 +932,9 @@ async def handle_reply(
             "PRIMERO reconoce su solicitud con 1 oracion ultra-breve "
             "(ej: 'Claro que si, con gusto!'). "
             "LUEGO pregunta en que sucursal quiere que lo atienda un asesor. "
-            "Lista las opciones: Tlalnepantla, Texcoco, Cuautitlan, Queretaro, "
-            "Celaya, Leon, Guadalajara (Occidente o Mariano Otero), Tampico, Monterrey. "
+            "Menciona que manejamos el mismo inventario completo en todas las sucursales "
+            "y que elija la que le quede mas comoda: Tlalnepantla, Texcoco, Cuautitlan, "
+            "Queretaro, Celaya, Leon, Guadalajara (Occidente o Mariano Otero), Tampico, Monterrey. "
             "NO des precios, catalogo ni requisitos tu misma.\n"
         )
     elif action == "pending_location" and pending_location:
@@ -914,8 +943,9 @@ async def handle_reply(
             "\n⚠️ CONTEXTO CRITICO: Ya le preguntaste la sucursal y NO te la dio. "
             "Su respuesta puede ser una afirmacion ('si', 'aja', 'ok', 'dale', 'claro') "
             "o algo generico. En ese caso NO asumas que ya tienes la sucursal. "
-            "UNICAMENTE di algo como 'Perfecto! Y en que ciudad o sucursal te gustaria "
-            "que te atendieran?' SIN mencionar al asesor todavia — eso viene despues. "
+            "UNICAMENTE di algo como 'Perfecto! Y en que sucursal te gustaria que te "
+            "atendieran? En cualquiera manejamos el inventario completo.' "
+            "SIN mencionar al asesor todavia. "
             "Opciones: Tlalnepantla, Texcoco, Cuautitlan, Queretaro, Celaya, Leon, "
             "Guadalajara (Occidente o Mariano Otero), Tampico, Monterrey.\n"
         )
@@ -999,13 +1029,22 @@ async def handle_reply(
 
     # 6b. Post-process: if AI response lists branch options, it's asking for location
     # Count how many branch names appear in the reply
-    branch_names_in_reply = sum(
-        1 for loc in ["Tlalnepantla", "Texcoco", "Cuautitlan", "Queretaro",
-                       "Celaya", "Leon", "Guadalajara", "Tampico", "Monterrey"]
-        if loc.lower() in reply_lower
-    )
+    _branch_list = ["Tlalnepantla", "Texcoco", "Cuautitlan", "Queretaro",
+                    "Celaya", "Leon", "Guadalajara", "Tampico", "Monterrey"]
+    branch_names_in_reply = sum(1 for loc in _branch_list if loc.lower() in reply_lower)
     if branch_names_in_reply >= 3 and action != "handoff":
         action = "pending_location"
+    elif branch_names_in_reply == 1 and action != "handoff":
+        # LLM confirmed exactly one branch — either user said a branch name (detected_location set)
+        # or LLM resolved a nearby city to a branch (pending_location context).
+        if detected_location:
+            # User message contained a branch name and LLM confirmed it → handoff
+            action = "handoff"
+        elif pending_location:
+            # User gave a nearby city; LLM resolved it to a branch → handoff
+            matched_branch = next(loc for loc in _branch_list if loc.lower() in reply_lower)
+            detected_location = BRANCH_LOCATIONS.get(matched_branch.lower(), matched_branch)
+            action = "handoff"
 
     # 6c. CRITICAL: Detect if bot is scheduling/confirming visits (FORBIDDEN)
     # If the bot confirms a time, says "te espero", gives an address, or says
@@ -1049,6 +1088,62 @@ async def handle_reply(
                 f"Tampico y Monterrey.\n\nDime cual te queda mas comoda."
             )
             action = "pending_location"
+
+    # 6d. Strip unsolicited business hours from reply.
+    # The system prompt says NEVER mention hours unless the user explicitly asked.
+    # If the LLM includes them anyway, remove the offending sentence(s).
+    _asked_hours = any(
+        w in user_text.lower()
+        for w in ["horario", "hora", "atienden", "abren", "cierran", "disponible", "cuando"]
+    )
+    if not _asked_hours:
+        _hours_patterns = [
+            r'[Nn]uestro horario[^.!?]*[.!?]',
+            r'[Hh]orario de atenci[oó]n[^.!?]*[.!?]',
+            r'\b9[:\s]?[a]?m\b[^.!?]*[.!?]',
+            r'[Tt]e atendemos a primera hora[.!?]?',
+            r'[Aa]tendemos de[^.!?]*[.!?]',
+        ]
+        _cleaned = reply
+        for pat in _hours_patterns:
+            _cleaned = re.sub(pat, '', _cleaned).strip()
+        if _cleaned != reply:
+            reply = _cleaned
+            reply_lower = reply.lower()
+            logger.info("🔧 Stripped unsolicited business hours from reply")
+
+    # 6e. CRITICAL: If action is pending_location but LLM "completed" the handoff
+    # without asking for location (said "te conecto con un asesor" with no location
+    # question), the user will think the handoff is done and stop responding.
+    # Detect and fix: replace the reply with an explicit location question.
+    if action == "pending_location":
+        _has_location_question = any(
+            w in reply_lower
+            for w in ["sucursal", "ciudad", "en qué", "en que", "cuál sucursal", "cual sucursal"]
+        )
+        _has_premature_handoff = any(w in reply_lower for w in handoff_hints)
+        if _has_premature_handoff and not _has_location_question:
+            client_name = contact_data.get("name", "").split("|")[0].strip()
+            name_part = f" {client_name}" if client_name else ""
+            if pending_location:
+                # Already asked for location once and client confirmed without giving it.
+                # LLM is trying to complete the handoff — go ahead and do a blind handoff
+                # so the owner gets notified immediately (location is unknown).
+                action = "handoff"
+                reply = (
+                    f"Perfecto{name_part}, en breve te contactará un asesor "
+                    f"para darte todos los detalles."
+                )
+                logger.info("🔧 Blind handoff triggered — client confirmed twice without location")
+            else:
+                # First time — ask for location before completing handoff
+                reply = (
+                    f"¡Con gusto{name_part}! Solo dime en cuál sucursal te gustaría "
+                    f"que te atendiera un asesor: Tlalnepantla, Texcoco, Cuautitlan, "
+                    f"Queretaro, Celaya, Leon, Guadalajara (Occidente o Mariano Otero), "
+                    f"Tampico o Monterrey."
+                )
+                logger.info("🔧 Fixed premature handoff reply — injected location question")
 
     # 7. Log final action after all post-processing
     _matched_hints = [w for w in handoff_hints if w in reply_lower]
