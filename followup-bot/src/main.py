@@ -83,8 +83,14 @@ class Settings(BaseSettings):
     # Owner alerts
     OWNER_PHONE: Optional[str] = None
 
-    # SQLite
-    SQLITE_PATH: str = "/app/followup-bot/db/memory.db"
+    # Cloud SQL (PostgreSQL)
+    CLOUDSQL_CONNECTION_NAME: str = ""
+    CLOUDSQL_DB_USER: str = "tonobot_app"
+    CLOUDSQL_DB_PASS: str = ""
+    CLOUDSQL_DB_NAME: str = "followupbot"
+
+    # Legacy compatibility setting; MondayQueue now uses Cloud SQL too.
+    MONDAY_QUEUE_DB_PATH: str = "/tmp/followup-monday-queue.db"
 
     # Handoff
     TEAM_NUMBERS: str = ""
@@ -190,14 +196,14 @@ async def lifespan(app: FastAPI):
     state.http_client = httpx.AsyncClient(timeout=30.0)
     
     # SQLite
-    state.memory = MemoryStore(settings.SQLITE_PATH)
+    state.memory = MemoryStore()
     await state.memory.init()
     # Restore silenced users from DB (survive restarts)
     state.silenced_users = await state.memory.load_silenced_users()
     if state.silenced_users:
-        logger.info(f"✅ SQLite initialized — restored {len(state.silenced_users)} silenced users")
+        logger.info(f"✅ Cloud SQL initialized — restored {len(state.silenced_users)} silenced users")
     else:
-        logger.info("✅ SQLite initialized")
+        logger.info("✅ Cloud SQL initialized")
     
     # LLM smoke test — Gemini primary, OpenAI fallback
     from src.conversation_logic import gemini_client, _GEMINI_MODEL, openai_client, FALLBACK_MODEL
@@ -229,7 +235,7 @@ async def lifespan(app: FastAPI):
 
     # Monday Queue (Outbox + Cache + DLQ)
     if settings.MONDAY_QUEUE_ENABLED and monday_followup.is_configured():
-        state.monday_queue = MondayQueue(settings.SQLITE_PATH)
+        state.monday_queue = MondayQueue(settings.MONDAY_QUEUE_DB_PATH)
         await state.monday_queue.init()
 
         # Start background queue processor with DLQ alert callback
@@ -292,7 +298,7 @@ app = FastAPI(title="Followup Bot", lifespan=lifespan)
 # CACHE SYNC
 # ============================================================
 async def _sync_contacts_cache():
-    """Sync Monday contacts to local SQLite cache."""
+    """Sync Monday contacts to the local contact cache stored in Cloud SQL."""
     if not state.monday_queue or not monday_followup.is_configured():
         return
     try:
@@ -617,7 +623,7 @@ async def _process_reply(phone: str, text: str):
         }
         unknown_contact = True
 
-    # Load conversation history from SQLite
+    # Load conversation history from Cloud SQL
     session = await state.memory.get(phone)
     history = []
     pending_location = False
@@ -706,7 +712,7 @@ async def _process_reply(phone: str, text: str):
     if len(history) > 20:
         history = history[-20:]
 
-    # Save to SQLite (include pending_location flag if waiting for location)
+    # Save to Cloud SQL (include pending_location flag if waiting for location)
     context_to_save = {"history": history}
     if action == "pending_location":
         context_to_save["pending_location"] = True
@@ -820,7 +826,7 @@ async def _process_reply(phone: str, text: str):
     if action == "handoff":
         silence_until = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
         state.silenced_users[phone] = silence_until
-        # Persist to SQLite so handoff survives restarts
+        # Persist to Cloud SQL so handoff survives restarts
         await state.memory.silence_user(phone, silence_until, reason="handoff")
         if settings.OWNER_PHONE:
             alert = _build_alert(
