@@ -5,8 +5,9 @@ python-multipart==0.0.9
 # HTTP clients
 httpx==0.27.2
 
-# Async SQLite
-aiosqlite==0.20.0
+# Async PostgreSQL (Cloud SQL) - replaces SQLite persistence
+asyncpg==0.30.0
+cloud-sql-python-connector[asyncpg]==1.13.0
 
 # OpenAI SDK (v1.x)
 openai==1.59.7
