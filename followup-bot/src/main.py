@@ -27,7 +27,7 @@ import io
 import httpx
 from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, StreamingResponse
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.memory_store import MemoryStore
 from src.monday_service import monday_followup
@@ -67,6 +67,8 @@ def _is_auto_responder(text: str, response_time_ms: int = 0) -> bool:
 # CONFIG
 # ============================================================
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     # Required
     EVOLUTION_API_URL: str
     EVOLUTION_API_KEY: str
@@ -112,11 +114,6 @@ class Settings(BaseSettings):
     OFF_HOURS_MSG_SUNDAY: str = "Nuestro horario de atencion es de lunes a viernes de 9am a 6pm y sabados de 9am a 2pm."
     OFF_HOURS_MSG_SATURDAY: str = "Nuestro horario sabatino es de 9am a 2pm. Te atendemos el lunes a primera hora."
     OFF_HOURS_MSG_WEEKNIGHT: str = "Nuestro horario de atencion es de 9am a 6pm. Te atendemos a primera hora."
-
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
-
 
 try:
     settings = Settings()

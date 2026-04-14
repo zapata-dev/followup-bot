@@ -11,11 +11,11 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import asyncpg
-from google.cloud.sql.connector import AsyncConnector
+from google.cloud.sql.connector import Connector
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +28,14 @@ DB_NAME = os.getenv("CLOUDSQL_DB_NAME", "followupbot")
 class MemoryStore:
     def __init__(self):
         self._pool: Optional[asyncpg.Pool] = None
-        self._connector: Optional[AsyncConnector] = None
+        self._connector: Optional[Connector] = None
 
     async def init(self):
         """Initialize Cloud SQL connection pool and create tables."""
         if not INSTANCE_CONNECTION_NAME:
             raise RuntimeError("CLOUDSQL_CONNECTION_NAME is required for MemoryStore")
 
-        self._connector = AsyncConnector()
+        self._connector = Connector()
 
         async def _getconn() -> asyncpg.Connection:
             return await self._connector.connect_async(
@@ -160,7 +160,7 @@ class MemoryStore:
         return data
 
     async def upsert(self, phone: str, state: str, context: Dict[str, Any]):
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         ctx_json = json.dumps(context, ensure_ascii=False)
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -185,7 +185,7 @@ class MemoryStore:
         status: str = "sent",
         error: str = None,
     ):
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
@@ -200,8 +200,8 @@ class MemoryStore:
             )
 
     async def get_velocity_stats(self) -> Dict:
-        ten_min_ago = (datetime.utcnow() - timedelta(minutes=10)).isoformat()
-        five_min_ago = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
+        ten_min_ago = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+        five_min_ago = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
         async with self._pool.acquire() as conn:
             row_10 = await conn.fetchrow(
                 "SELECT COUNT(*) as cnt FROM send_log "
@@ -225,7 +225,7 @@ class MemoryStore:
         }
 
     async def get_send_log_today(self) -> Dict:
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT status, COUNT(*) as cnt FROM send_log "

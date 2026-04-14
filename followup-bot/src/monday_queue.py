@@ -8,11 +8,11 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import asyncpg
-from google.cloud.sql.connector import AsyncConnector
+from google.cloud.sql.connector import Connector
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class MondayQueue:
 
     def __init__(self, _db_path: Optional[str] = None):
         self._pool: Optional[asyncpg.Pool] = None
-        self._connector: Optional[AsyncConnector] = None
+        self._connector: Optional[Connector] = None
         self._running = False
         self._process_task: Optional[asyncio.Task] = None
         self._flush_event = asyncio.Event()
@@ -44,7 +44,7 @@ class MondayQueue:
         if not INSTANCE_CONNECTION_NAME:
             raise RuntimeError("CLOUDSQL_CONNECTION_NAME is required for MondayQueue")
 
-        self._connector = AsyncConnector()
+        self._connector = Connector()
 
         async def _getconn() -> asyncpg.Connection:
             return await self._connector.connect_async(
@@ -126,7 +126,7 @@ class MondayQueue:
 
     async def enqueue(self, item_id: str, operation: str, payload: dict):
         """Queue a Monday update for background processing."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
@@ -170,7 +170,7 @@ class MondayQueue:
             await conn.execute("DELETE FROM monday_outbox WHERE id = $1", queue_id)
 
     async def mark_retry(self, queue_id: int, error: str):
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
@@ -184,7 +184,7 @@ class MondayQueue:
             )
 
     async def move_to_dlq(self, queue_id: int, item: dict):
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
@@ -243,7 +243,7 @@ class MondayQueue:
             if not row:
                 return False
 
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             await conn.execute(
                 """
                 INSERT INTO monday_outbox (
@@ -315,7 +315,7 @@ class MondayQueue:
         return result
 
     async def cache_contact(self, phone: str, contact: dict):
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
@@ -348,7 +348,7 @@ class MondayQueue:
             )
 
     async def cache_contacts_bulk(self, contacts: List[dict]):
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         rows = [
             (
                 c.get("phone", ""),
@@ -455,7 +455,7 @@ class MondayQueue:
         if not set_clauses:
             return
         set_clauses.append(f"cached_at = ${idx}")
-        values.append(datetime.utcnow().isoformat())
+        values.append(datetime.now(timezone.utc).isoformat())
         idx += 1
         values.append(phone)
         query = f"UPDATE contact_cache SET {', '.join(set_clauses)} WHERE phone = ${idx}"
