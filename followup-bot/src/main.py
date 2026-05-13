@@ -816,29 +816,40 @@ async def _process_reply(phone: str, text: str):
         except Exception as e:
             logger.error(f"❌ Monday update FAILED for {phone[:6]}***: item={item_id}, action={action}, error={e}")
 
+    def _alert_recipients() -> list[str]:
+        recipients = []
+        if settings.OWNER_PHONE:
+            recipients.append(settings.OWNER_PHONE)
+        if settings.TEAM_NUMBERS:
+            for num in settings.TEAM_NUMBERS.split(","):
+                num = num.strip()
+                if num and num not in recipients:
+                    recipients.append(num)
+        return recipients
+
     # Actions that need immediate side effects (not queued)
     if action == "handoff":
         silence_until = time.time() + (settings.AUTO_REACTIVATE_MINUTES * 60)
         state.silenced_users[phone] = silence_until
         # Persist to SQLite so handoff survives restarts
         await state.memory.silence_user(phone, silence_until, reason="handoff")
-        if settings.OWNER_PHONE:
-            alert = _build_alert(
-                title="🤝 HANDOFF en seguimiento",
-                contact=contact, phone=phone, text=text,
-                resumen=resumen, history=history,
-                detected_location=detected_location,
-            )
-            await _send_reply(settings.OWNER_PHONE, alert)
+        alert = _build_alert(
+            title="🤝 HANDOFF en seguimiento",
+            contact=contact, phone=phone, text=text,
+            resumen=resumen, history=history,
+            detected_location=detected_location,
+        )
+        for recipient in _alert_recipients():
+            await _send_reply(recipient, alert)
     elif action == "interested":
-        if settings.OWNER_PHONE:
-            alert = _build_alert(
-                title="🟢 LEAD INTERESADO en seguimiento",
-                contact=contact, phone=phone, text=text,
-                resumen=resumen, history=history,
-                detected_location=None,
-            )
-            await _send_reply(settings.OWNER_PHONE, alert)
+        alert = _build_alert(
+            title="🟢 LEAD INTERESADO en seguimiento",
+            contact=contact, phone=phone, text=text,
+            resumen=resumen, history=history,
+            detected_location=None,
+        )
+        for recipient in _alert_recipients():
+            await _send_reply(recipient, alert)
 
 
 def _build_alert(
